@@ -19,9 +19,9 @@ spec:
     spec:
       containers:
         - name: frontend
-          image: nginxinc/nginx-unprivileged:alpine
+          image: ghcr.io/markusintility/projecttools-frontend:latest
           ports:
-            - containerPort: 8080
+            - containerPort: 80
               name: http
           resources:
             requests:

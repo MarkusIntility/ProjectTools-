@@ -19,20 +19,26 @@ spec:
     spec:
       containers:
         - name: backend
-          image: quay.io/openshifttest/hello-openshift:latest
+          image: ghcr.io/markusintility/projecttools-backend:latest
           ports:
-            - containerPort: 8080
+            - containerPort: 8000
               name: http
+          env:
+            - name: DATABASE_URL
+              valueFrom:
+                secretKeyRef:
+                  name: projecttools-secrets
+                  key: database-url
           resources:
             requests:
-              cpu: 10m
-              memory: 32Mi
-            limits:
-              cpu: 100m
+              cpu: 50m
               memory: 128Mi
+            limits:
+              cpu: 200m
+              memory: 256Mi
           readinessProbe:
             httpGet:
-              path: /
-              port: 8080
+              path: /health
+              port: 8000
             initialDelaySeconds: 2
             periodSeconds: 5
