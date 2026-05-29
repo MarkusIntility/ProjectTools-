@@ -1,7 +1,10 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useCallback } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { Button, Input, Modal } from "@intility/bifrost-react";
 import { api, type Runbook, type RunbookActivity } from "../api/client";
+import { isMsalConfigured, msalInstance, PLANNER_SCOPES } from "../auth/msalConfig";
+import { fetchPlannerData, parsePlanId, taskStatus, type PlannerData, type PlannerBucket, type PlannerTask } from "../auth/plannerService";
+import type { AccountInfo } from "@azure/msal-browser";
 
 // ─── Status config ────────────────────────────────────────────────────────────
 
@@ -37,6 +40,13 @@ export default function RunbookPage() {
   const navigate = useNavigate();
   const [runbook, setRunbook] = useState<Runbook | null>(null);
 
+  // Planner state
+  const [msalReady, setMsalReady] = useState(false);
+  const [plannerAccount, setPlannerAccount] = useState<AccountInfo | null>(null);
+  const [plannerData, setPlannerData] = useState<PlannerData | null>(null);
+  const [plannerLoading, setPlannerLoading] = useState(false);
+  const [plannerError, setPlannerError] = useState<string | null>(null);
+
   const [activityModal, setActivityModal] = useState(false);
   const [editTarget, setEditTarget] = useState<RunbookActivity | null>(null);
   const [form, setForm] = useState(EMPTY_FORM);
@@ -53,6 +63,52 @@ export default function RunbookPage() {
     if (!projectId || !runbookId) return;
     api.runbooks.get(projectId, runbookId).then(setRunbook);
   }, [projectId, runbookId]);
+
+  // Initialize MSAL once and check for existing login
+  useEffect(() => {
+    if (!isMsalConfigured) return;
+    msalInstance.initialize().then(() => {
+      setMsalReady(true);
+      const accounts = msalInstance.getAllAccounts();
+      if (accounts.length > 0) setPlannerAccount(accounts[0]);
+    });
+  }, []);
+
+  const loadPlannerData = useCallback(async (account: AccountInfo, planId: string) => {
+    setPlannerLoading(true);
+    setPlannerError(null);
+    try {
+      const data = await fetchPlannerData(msalInstance, account, planId);
+      setPlannerData(data);
+    } catch (err) {
+      setPlannerError(err instanceof Error ? err.message : "Ukjent feil");
+    } finally {
+      setPlannerLoading(false);
+    }
+  }, []);
+
+  // Auto-fetch when account + runbook ready
+  useEffect(() => {
+    if (!plannerAccount || !runbook || runbook.source !== "planner" || !runbook.external_url) return;
+    const planId = parsePlanId(runbook.external_url);
+    if (planId) loadPlannerData(plannerAccount, planId);
+  }, [plannerAccount, runbook, loadPlannerData]);
+
+  async function loginPlanner() {
+    if (!isMsalConfigured || !msalReady) return;
+    try {
+      const result = await msalInstance.loginPopup({ scopes: PLANNER_SCOPES });
+      setPlannerAccount(result.account);
+    } catch (err) {
+      setPlannerError("Innlogging avbrutt eller mislyktes.");
+    }
+  }
+
+  function refreshPlanner() {
+    if (!plannerAccount || !runbook?.external_url) return;
+    const planId = parsePlanId(runbook.external_url);
+    if (planId) loadPlannerData(plannerAccount, planId);
+  }
 
   function openAdd(defaultPhase?: string) {
     setEditTarget(null);
@@ -176,47 +232,25 @@ export default function RunbookPage() {
         </div>
       </div>
 
-      {/* External source view */}
-      {runbook.source !== "own" && (
-        <div style={{
-          padding: "2rem",
-          borderRadius: 10,
-          background: "var(--bfc-base-3)",
-          border: `1px solid var(--bfc-base-dimmed)`,
-          borderTop: `4px solid ${srcCfg.color}`,
-          textAlign: "center",
-          maxWidth: 540,
-          margin: "0 auto",
-        }}>
-          <div style={{ fontSize: "2rem", marginBottom: "0.75rem" }}>
-            {runbook.source === "planner" ? "📋" : "📊"}
-          </div>
-          <h2 className="bf-h4" style={{ margin: "0 0 0.5rem" }}>Styres i {srcCfg.label}</h2>
-          <p style={{ color: "var(--bfc-base-c-2)", marginBottom: "1.5rem", fontSize: "0.9rem" }}>
-            Denne runbooken er knyttet til en ekstern plan. Bruk lenken under for å se og redigere innholdet.
-          </p>
-          {runbook.external_url ? (
-            <a
-              href={runbook.external_url}
-              target="_blank"
-              rel="noopener noreferrer"
-              style={{
-                display: "inline-block",
-                padding: "0.6rem 1.5rem",
-                background: srcCfg.color,
-                color: "#fff",
-                borderRadius: 6,
-                fontWeight: 600,
-                textDecoration: "none",
-                fontSize: "0.95rem",
-              }}
-            >
-              Åpne i {srcCfg.label} →
-            </a>
-          ) : (
-            <p style={{ color: "var(--bfc-base-c-3)", fontSize: "0.85rem" }}>Ingen URL lagt til ennå. Trykk «Rediger» for å legge til.</p>
-          )}
-        </div>
+      {/* Planner integration view */}
+      {runbook.source === "planner" && (
+        <PlannerView
+          runbook={runbook}
+          srcCfg={srcCfg}
+          isMsalConfigured={isMsalConfigured}
+          msalReady={msalReady}
+          account={plannerAccount}
+          data={plannerData}
+          loading={plannerLoading}
+          error={plannerError}
+          onLogin={loginPlanner}
+          onRefresh={refreshPlanner}
+        />
+      )}
+
+      {/* Smartsheet — link only for now */}
+      {runbook.source === "smartsheet" && (
+        <ExternalLinkCard runbook={runbook} srcCfg={srcCfg} />
       )}
 
       {/* Own runbook: stats + activities */}
@@ -570,6 +604,233 @@ function ActivityForm({
           {saving ? "Lagrer..." : "Lagre"}
         </Button>
       </div>
+    </div>
+  );
+}
+
+// ─── External link card (Smartsheet) ─────────────────────────────────────────
+
+function ExternalLinkCard({ runbook, srcCfg }: { runbook: Runbook; srcCfg: { label: string; color: string } }) {
+  return (
+    <div style={{
+      padding: "2rem", borderRadius: 10, background: "var(--bfc-base-3)",
+      border: "1px solid var(--bfc-base-dimmed)", borderTop: `4px solid ${srcCfg.color}`,
+      textAlign: "center", maxWidth: 540, margin: "0 auto",
+    }}>
+      <div style={{ fontSize: "2rem", marginBottom: "0.75rem" }}>📊</div>
+      <h2 className="bf-h4" style={{ margin: "0 0 0.5rem" }}>Styres i {srcCfg.label}</h2>
+      <p style={{ color: "var(--bfc-base-c-2)", marginBottom: "1.5rem", fontSize: "0.9rem" }}>
+        Bruk lenken under for å se og redigere innholdet i {srcCfg.label}.
+      </p>
+      {runbook.external_url ? (
+        <a href={runbook.external_url} target="_blank" rel="noopener noreferrer"
+          style={{ display: "inline-block", padding: "0.6rem 1.5rem", background: srcCfg.color, color: "#fff", borderRadius: 6, fontWeight: 600, textDecoration: "none" }}>
+          Åpne i {srcCfg.label} →
+        </a>
+      ) : (
+        <p style={{ color: "var(--bfc-base-c-3)", fontSize: "0.85rem" }}>Ingen URL lagt til. Trykk «Rediger» for å legge til.</p>
+      )}
+    </div>
+  );
+}
+
+// ─── Planner integration view ─────────────────────────────────────────────────
+
+function PlannerView({
+  runbook, srcCfg, isMsalConfigured: configured, msalReady, account, data, loading, error, onLogin, onRefresh,
+}: {
+  runbook: Runbook;
+  srcCfg: { label: string; color: string };
+  isMsalConfigured: boolean;
+  msalReady: boolean;
+  account: AccountInfo | null;
+  data: PlannerData | null;
+  loading: boolean;
+  error: string | null;
+  onLogin: () => void;
+  onRefresh: () => void;
+}) {
+  const planId = runbook.external_url ? parsePlanId(runbook.external_url) : null;
+
+  if (!configured) {
+    return (
+      <div style={{ padding: "1.5rem", borderRadius: 10, background: "#FFF3BF", border: "1px solid #FAB005", maxWidth: 600, margin: "0 auto" }}>
+        <h3 style={{ margin: "0 0 0.5rem", color: "#5C3A00" }}>Azure AD ikke konfigurert</h3>
+        <p style={{ margin: 0, fontSize: "0.9rem", color: "#7C4D00" }}>
+          For å koble til Microsoft Planner kreves en Azure AD-app-registrering. Legg til
+          {" "}<code>VITE_AZURE_CLIENT_ID</code> og <code>VITE_AZURE_TENANT_ID</code> som
+          GitHub Secrets og bygg på nytt.
+        </p>
+      </div>
+    );
+  }
+
+  if (!runbook.external_url || !planId) {
+    return (
+      <div style={{ textAlign: "center", padding: "2rem", color: "var(--bfc-base-c-2)" }}>
+        <p>Ingen Planner-URL er lagt til ennå.</p>
+        <p style={{ fontSize: "0.85rem" }}>Trykk «Rediger» og lim inn lenken til Planner-planen.</p>
+      </div>
+    );
+  }
+
+  return (
+    <div>
+      {/* Toolbar */}
+      <div style={{ display: "flex", alignItems: "center", gap: "0.75rem", marginBottom: "1.25rem", flexWrap: "wrap" }}>
+        {account ? (
+          <>
+            <span style={{ fontSize: "0.85rem", color: "var(--bfc-base-c-2)" }}>
+              Innlogget som <strong>{account.name ?? account.username}</strong>
+            </span>
+            <Button variant="outline" onClick={onRefresh} state={loading ? "inactive" : "default"}>
+              {loading ? "Henter..." : "Oppdater"}
+            </Button>
+            {runbook.external_url && (
+              <a href={runbook.external_url} target="_blank" rel="noopener noreferrer"
+                style={{ fontSize: "0.85rem", color: srcCfg.color, fontWeight: 600, textDecoration: "none" }}>
+                Åpne i Planner →
+              </a>
+            )}
+          </>
+        ) : (
+          <Button variant="filled" onClick={onLogin} state={!msalReady ? "inactive" : "default"}
+            style={{ background: "#0078D4", borderColor: "#0078D4" }}>
+            Logg inn med Microsoft for å hente aktiviteter
+          </Button>
+        )}
+      </div>
+
+      {error && (
+        <div style={{ padding: "0.75rem 1rem", borderRadius: 6, background: "#FFE3E3", color: "#C92A2A", marginBottom: "1rem", fontSize: "0.9rem" }}>
+          {error}
+        </div>
+      )}
+
+      {loading && (
+        <div style={{ textAlign: "center", padding: "3rem", color: "var(--bfc-base-c-2)" }}>
+          Henter aktiviteter fra Microsoft Planner…
+        </div>
+      )}
+
+      {data && !loading && <PlannerTaskList data={data} srcCfg={srcCfg} />}
+    </div>
+  );
+}
+
+// ─── Planner task list ────────────────────────────────────────────────────────
+
+function PlannerTaskList({ data, srcCfg }: { data: PlannerData; srcCfg: { color: string } }) {
+  const bucketMap = Object.fromEntries(data.buckets.map((b) => [b.id, b.name]));
+  const grouped: Record<string, PlannerTask[]> = {};
+  for (const task of data.tasks) {
+    const bucket = bucketMap[task.bucketId] ?? "Ukjent fase";
+    if (!grouped[bucket]) grouped[bucket] = [];
+    grouped[bucket].push(task);
+  }
+
+  const done = data.tasks.filter((t) => t.percentComplete === 100).length;
+  const inProgress = data.tasks.filter((t) => t.percentComplete > 0 && t.percentComplete < 100).length;
+  const total = data.tasks.length;
+
+  return (
+    <div>
+      {/* Stats */}
+      <div style={{ display: "flex", gap: "1rem", marginBottom: "1.75rem", flexWrap: "wrap" }}>
+        {[
+          { label: "Totalt",    value: total,               color: "#868E96" },
+          { label: "Ferdig",    value: done,                color: "#2F9E44" },
+          { label: "Pågående",  value: inProgress,          color: "#1971C2" },
+          { label: "Gjenstår",  value: total - done - inProgress, color: "#F76707" },
+        ].map(({ label, value, color }) => (
+          <div key={label} style={{ padding: "0.6rem 1.1rem", borderRadius: 8, background: `${color}12`, border: `1px solid ${color}30`, textAlign: "center", minWidth: 80 }}>
+            <div style={{ fontSize: "1.4rem", fontWeight: 700, color }}>{value}</div>
+            <div style={{ fontSize: "0.75rem", color: "var(--bfc-base-c-2)" }}>{label}</div>
+          </div>
+        ))}
+      </div>
+
+      {/* Buckets */}
+      <div style={{ display: "grid", gap: "1.5rem" }}>
+        {Object.entries(grouped).map(([bucket, tasks]) => {
+          const bucketDone = tasks.filter((t) => t.percentComplete === 100).length;
+          const pct = tasks.length > 0 ? Math.round((bucketDone / tasks.length) * 100) : 0;
+          return (
+            <div key={bucket}>
+              <div style={{ display: "flex", alignItems: "center", gap: "0.75rem", marginBottom: "0.5rem" }}>
+                <h3 className="bf-h4" style={{ margin: 0, flex: 1 }}>{bucket}</h3>
+                <span style={{ fontSize: "0.75rem", color: "var(--bfc-base-c-3)" }}>{bucketDone}/{tasks.length} ferdig</span>
+                <div style={{ width: 80, height: 6, borderRadius: 3, background: "var(--bfc-base-dimmed)", overflow: "hidden" }}>
+                  <div style={{ width: `${pct}%`, height: "100%", background: "#2F9E44", borderRadius: 3, transition: "width 0.3s" }} />
+                </div>
+              </div>
+              <div style={{ display: "grid", gap: "0.35rem" }}>
+                {tasks.map((task) => <PlannerTaskRow key={task.id} task={task} srcCfg={srcCfg} />)}
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+function PlannerTaskRow({ task, srcCfg }: { task: PlannerTask; srcCfg: { color: string } }) {
+  const [hovered, setHovered] = useState(false);
+  const status = taskStatus(task.percentComplete);
+  const cfg = STATUS_CONFIG[status];
+  const isDone = status === "done";
+
+  return (
+    <div
+      onMouseEnter={() => setHovered(true)}
+      onMouseLeave={() => setHovered(false)}
+      style={{
+        display: "flex", alignItems: "center", gap: "0.75rem",
+        padding: "0.65rem 1rem", borderRadius: 7,
+        background: "var(--bfc-base-3)", border: "1px solid var(--bfc-base-dimmed)",
+        boxShadow: hovered ? "0 2px 8px rgba(0,0,0,0.07)" : "none",
+        transition: "box-shadow 0.15s",
+      }}
+    >
+      {/* Status circle (read-only) */}
+      <div style={{
+        width: 22, height: 22, borderRadius: "50%", flexShrink: 0,
+        border: `2px solid ${cfg.color}`,
+        background: isDone ? cfg.color : "transparent",
+        display: "flex", alignItems: "center", justifyContent: "center",
+      }}>
+        {isDone && <span style={{ color: "#fff", fontSize: "0.7rem", fontWeight: 700 }}>✓</span>}
+      </div>
+
+      <span style={{
+        flex: 1, fontSize: "0.9rem",
+        textDecoration: isDone ? "line-through" : "none",
+        color: isDone ? "var(--bfc-base-c-3)" : "inherit",
+        overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
+      }}>
+        {task.title}
+      </span>
+
+      {/* Progress bar for partially done */}
+      {task.percentComplete > 0 && task.percentComplete < 100 && (
+        <div style={{ width: 60, height: 5, borderRadius: 3, background: "var(--bfc-base-dimmed)", overflow: "hidden", flexShrink: 0 }}>
+          <div style={{ width: `${task.percentComplete}%`, height: "100%", background: cfg.color, borderRadius: 3 }} />
+        </div>
+      )}
+
+      {/* Dates */}
+      {(task.startDateTime || task.dueDateTime) && (
+        <span style={{ fontSize: "0.75rem", color: "var(--bfc-base-c-3)", flexShrink: 0, whiteSpace: "nowrap" }}>
+          {task.startDateTime && new Date(task.startDateTime).toLocaleDateString("nb-NO", { day: "numeric", month: "short" })}
+          {task.startDateTime && task.dueDateTime && " → "}
+          {task.dueDateTime && new Date(task.dueDateTime).toLocaleDateString("nb-NO", { day: "numeric", month: "short" })}
+        </span>
+      )}
+
+      <span style={{ fontSize: "0.72rem", fontWeight: 600, padding: "2px 8px", borderRadius: 20, background: cfg.bg, color: cfg.color, flexShrink: 0 }}>
+        {cfg.label}
+      </span>
     </div>
   );
 }
