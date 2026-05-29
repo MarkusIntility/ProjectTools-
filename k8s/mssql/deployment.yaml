@@ -23,6 +23,14 @@ spec:
               value: "Y"
             - name: MSSQL_PID
               value: "Developer"
+            - name: MSSQL_LOG_DIR
+              value: "/var/opt/mssql/log"
+            - name: MSSQL_DATA_DIR
+              value: "/var/opt/mssql/data"
+            - name: MSSQL_BACKUP_DIR
+              value: "/var/opt/mssql/backup"
+            - name: MSSQL_DUMP_DIR
+              value: "/var/opt/mssql/dump"
             - name: SA_PASSWORD
               valueFrom:
                 secretKeyRef:
@@ -33,6 +41,8 @@ spec:
               mountPath: /var/opt/mssql
             - name: mssql-system
               mountPath: /.system
+            - name: mssql-log
+              mountPath: /log
           resources:
             requests:
               cpu: 500m
@@ -45,4 +55,6 @@ spec:
           persistentVolumeClaim:
             claimName: mssql-pvc
         - name: mssql-system
+          emptyDir: {}
+        - name: mssql-log
           emptyDir: {}
