@@ -616,7 +616,7 @@ function DashboardTab({ runbook, plannerData, plannerLoading, srcColor, onGoToAc
       {/* Phase breakdown */}
       {phases.length > 0 && (
         <div>
-          <h3 className="bf-h4" style={{ margin: "0 0 0.85rem", color: "var(--bfc-base-c-2)", fontWeight: 500, fontSize: "0.8rem", textTransform: "uppercase", letterSpacing: "0.06em" }}>Fremdrift per fase</h3>
+          <h3 className="bf-h4" style={{ margin: "0 0 0.85rem", color: "var(--bfc-base-c-2)", fontWeight: 500, fontSize: "0.8rem", textTransform: "uppercase", letterSpacing: "0.06em" }}>Fremdrift per fagområde</h3>
           <div style={{ display: "grid", gap: "0.5rem" }}>
             {phases.map(({ name, done: pDone, total: phTotal }) => {
               const pct = phTotal > 0 ? Math.round((pDone / phTotal) * 100) : 0;
