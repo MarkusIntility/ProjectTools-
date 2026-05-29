@@ -713,14 +713,14 @@ function PlannerView({
         </div>
       )}
 
-      {data && !loading && <PlannerTaskList data={data} srcCfg={srcCfg} />}
+      {data && !loading && <PlannerTaskList data={data} />}
     </div>
   );
 }
 
 // ─── Planner task list ────────────────────────────────────────────────────────
 
-function PlannerTaskList({ data, srcCfg }: { data: PlannerData; srcCfg: { color: string } }) {
+function PlannerTaskList({ data }: { data: PlannerData }) {
   const bucketMap = Object.fromEntries(data.buckets.map((b) => [b.id, b.name]));
   const grouped: Record<string, PlannerTask[]> = {};
   for (const task of data.tasks) {
