@@ -67,11 +67,14 @@ export function parsePlanId(url: string): string | null {
         if (id) return id;
       }
     }
-    // Regular query param
+    // Regular query param: ?planId=yyy
     const u = new URL(url);
     const id = u.searchParams.get("planId");
     if (id) return id;
-    // New Planner app: /plan/[planId]/
+    // Premium Planner: /webui/premiumplan/{uuid}/
+    const premiumMatch = url.match(/\/premiumplan\/([0-9a-f-]{36})/i);
+    if (premiumMatch) return premiumMatch[1];
+    // Classic new Planner app: /plan/[planId]/
     const match = url.match(/\/plan\/([A-Za-z0-9_-]+)/);
     return match?.[1] ?? null;
   } catch {
