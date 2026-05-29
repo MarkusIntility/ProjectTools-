@@ -23,6 +23,8 @@ spec:
               value: "Y"
             - name: MSSQL_PID
               value: "Developer"
+            - name: MSSQL_SYSTEM_DIR
+              value: "/var/opt/mssql/.system"
             - name: SA_PASSWORD
               valueFrom:
                 secretKeyRef:
