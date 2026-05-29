@@ -7,7 +7,7 @@ metadata:
     nginx.ingress.kubernetes.io/rewrite-target: /
 spec:
   rules:
-    - host: projecttools.intility.com  # bytt til faktisk domene
+    - host: projecttools-project-tools.apps.ipc-dev-jey5h0.clusters.intilitycloud.com
       http:
         paths:
           - path: /api
