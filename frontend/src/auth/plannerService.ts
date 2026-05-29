@@ -18,11 +18,13 @@ export interface PlannerTask {
   dueDateTime: string | null;
   assignments: Record<string, unknown>;
   priority: number;
+  labels?: string[];
 }
 
 export interface PlannerData {
   buckets: PlannerBucket[];
   tasks: PlannerTask[];
+  categoryDescriptions?: Record<string, string | null>;
 }
 
 // ─── Dataverse types ──────────────────────────────────────────────────────────
@@ -170,6 +172,25 @@ async function fetchPlannerPremiumData(
     const { value: dvTasks }: { value: DataverseTask[] } = await tasksRes.json();
     console.log(`[Planner] Fant ${dvTasks.length} oppgaver i ${candidate.FriendlyName}`);
 
+    // Investigation: fetch first task without $select to discover all available fields
+    fetch(`${apiUrl}/api/data/v9.2/msdyn_projecttasks?$filter=_msdyn_project_value eq ${planId}&$top=1`, { headers: dvHeaders })
+      .then((r) => r.json())
+      .then((d) => {
+        if (d.value?.[0]) {
+          const fields = Object.keys(d.value[0]).filter((k) => !k.startsWith("@")).sort();
+          console.log("[Planner Premium] Tilgjengelige felt på msdyn_projecttask:", fields.join(", "));
+          const labelCandidates = fields.filter((f) =>
+            ["label", "categ", "tag", "department"].some((kw) => f.toLowerCase().includes(kw))
+          );
+          if (labelCandidates.length) {
+            console.log("[Planner Premium] Mulige label-felt:", labelCandidates.join(", "));
+          } else {
+            console.log("[Planner Premium] Ingen åpenbare label-felt funnet — vurder lokal label-løsning.");
+          }
+        }
+      })
+      .catch(() => {});
+
     // Fetch buckets
     let dvBuckets: DataverseBucket[] = [];
     const bucketsRes = await fetch(
@@ -230,11 +251,21 @@ export async function fetchPlannerData(
   });
 
   if (v1Check.ok) {
-    const [bucketsData, tasksData] = await Promise.all([
+    const [bucketsData, tasksData, planDetails] = await Promise.all([
       graphRequest<{ value: PlannerBucket[] }>(token, `/planner/plans/${planId}/buckets`),
-      graphRequest<{ value: PlannerTask[] }>(token, `/planner/plans/${planId}/tasks`),
+      graphRequest<{ value: (PlannerTask & { appliedCategories?: Record<string, boolean> })[] }>(token, `/planner/plans/${planId}/tasks`),
+      graphRequest<{ categoryDescriptions: Record<string, string | null> }>(token, `/planner/plans/${planId}/details`)
+        .catch(() => ({ categoryDescriptions: {} as Record<string, string | null> })),
     ]);
-    return { buckets: bucketsData.value, tasks: tasksData.value };
+    const catDesc = planDetails.categoryDescriptions ?? {};
+    const tasks = tasksData.value.map((t) => ({
+      ...t,
+      labels: Object.entries(t.appliedCategories ?? {})
+        .filter(([, v]) => v === true)
+        .map(([k]) => catDesc[k])
+        .filter((name): name is string => Boolean(name)),
+    }));
+    return { buckets: bucketsData.value, tasks, categoryDescriptions: catDesc };
   }
 
   if (v1Check.status === 404) {
@@ -243,11 +274,21 @@ export async function fetchPlannerData(
     });
 
     if (betaCheck.ok) {
-      const [bucketsData, tasksData] = await Promise.all([
+      const [bucketsData, tasksData, planDetails] = await Promise.all([
         graphRequest<{ value: PlannerBucket[] }>(token, `/planner/plans/${planId}/buckets`, "beta"),
-        graphRequest<{ value: PlannerTask[] }>(token, `/planner/plans/${planId}/tasks`, "beta"),
+        graphRequest<{ value: (PlannerTask & { appliedCategories?: Record<string, boolean> })[] }>(token, `/planner/plans/${planId}/tasks`, "beta"),
+        graphRequest<{ categoryDescriptions: Record<string, string | null> }>(token, `/planner/plans/${planId}/details`, "beta")
+          .catch(() => ({ categoryDescriptions: {} as Record<string, string | null> })),
       ]);
-      return { buckets: bucketsData.value, tasks: tasksData.value };
+      const catDesc = planDetails.categoryDescriptions ?? {};
+      const tasks = tasksData.value.map((t) => ({
+        ...t,
+        labels: Object.entries(t.appliedCategories ?? {})
+          .filter(([, v]) => v === true)
+          .map(([k]) => catDesc[k])
+          .filter((name): name is string => Boolean(name)),
+      }));
+      return { buckets: bucketsData.value, tasks, categoryDescriptions: catDesc };
     }
 
     // Both Graph versions 404 — Premium plan stored in Dataverse

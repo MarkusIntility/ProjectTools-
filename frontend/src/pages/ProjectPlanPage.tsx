@@ -297,6 +297,31 @@ export default function ProjectPlanPage() {
   );
 }
 
+// ─── Filter helpers ───────────────────────────────────────────────────────────
+
+type Filter = "all" | "done" | "in_progress" | "remaining";
+
+const FILTER_LABELS: Record<Filter, string> = {
+  all:         "Alle",
+  done:        "Ferdig",
+  in_progress: "Pågående",
+  remaining:   "Gjenstår",
+};
+
+function matchOwnFilter(pct: number, f: Filter): boolean {
+  if (f === "done")        return pct === 100;
+  if (f === "in_progress") return pct > 0 && pct < 100;
+  if (f === "remaining")   return pct === 0;
+  return true;
+}
+
+function matchPlannerFilter(pct: number, f: Filter): boolean {
+  if (f === "done")        return pct === 100;
+  if (f === "in_progress") return pct > 0 && pct < 100;
+  if (f === "remaining")   return pct === 0;
+  return true;
+}
+
 // ─── Own plan view ────────────────────────────────────────────────────────────
 
 function OwnPlanView({
@@ -308,10 +333,15 @@ function OwnPlanView({
   onDelete: (t: ProjectPlanTask) => void;
   onUpdateProgress: (t: ProjectPlanTask, pct: number) => void;
 }) {
+  const [filter, setFilter] = useState<Filter>("all");
+
   const total = plan.tasks.length;
   const done = plan.tasks.filter((t) => t.percent_complete === 100).length;
   const inProg = plan.tasks.filter((t) => t.percent_complete > 0 && t.percent_complete < 100).length;
+  const remaining = total - done - inProg;
   const overallPct = total > 0 ? Math.round(plan.tasks.reduce((sum, t) => sum + t.percent_complete, 0) / total) : 0;
+
+  const visibleTasks = plan.tasks.filter((t) => matchOwnFilter(t.percent_complete, filter));
 
   const buckets = [...new Set(plan.tasks.map((t) => t.bucket ?? ""))];
   const ordered = buckets.filter(Boolean);
@@ -326,22 +356,38 @@ function OwnPlanView({
     );
   }
 
+  const STAT_CARDS = [
+    { key: "all"         as Filter, label: "Totalt",   value: total,     color: "#868E96" },
+    { key: "done"        as Filter, label: "Ferdig",   value: done,      color: "#2F9E44" },
+    { key: "in_progress" as Filter, label: "Pågående", value: inProg,    color: "#1971C2" },
+    { key: "remaining"   as Filter, label: "Gjenstår", value: remaining, color: "#F76707" },
+  ];
+
   return (
     <div>
-      {/* Stats */}
-      <div style={{ display: "flex", gap: "1rem", marginBottom: "1.75rem", flexWrap: "wrap", alignItems: "center" }}>
-        {[
-          { label: "Totalt", value: total, color: "#868E96" },
-          { label: "Ferdig", value: done, color: "#2F9E44" },
-          { label: "Pågående", value: inProg, color: "#1971C2" },
-          { label: "Gjenstår", value: total - done - inProg, color: "#F76707" },
-        ].map(({ label, value, color }) => (
-          <div key={label} style={{ padding: "0.6rem 1.1rem", borderRadius: 8, background: `${color}12`, border: `1px solid ${color}30`, textAlign: "center", minWidth: 80 }}>
-            <div style={{ fontSize: "1.4rem", fontWeight: 700, color }}>{value}</div>
-            <div style={{ fontSize: "0.75rem", color: "var(--bfc-base-c-2)" }}>{label}</div>
-          </div>
-        ))}
-        {/* Overall progress */}
+      {/* Stats + overall progress */}
+      <div style={{ display: "flex", gap: "1rem", marginBottom: "1rem", flexWrap: "wrap", alignItems: "center" }}>
+        {STAT_CARDS.map(({ key, label, value, color }) => {
+          const isActive = filter === key;
+          return (
+            <div
+              key={key}
+              onClick={() => setFilter(prev => prev === key ? "all" : key)}
+              style={{
+                padding: "0.6rem 1.1rem", borderRadius: 8, textAlign: "center", minWidth: 80,
+                background: isActive ? `${color}22` : `${color}12`,
+                border: `1px solid ${isActive ? color : `${color}30`}`,
+                cursor: key === "all" ? "default" : "pointer",
+                outline: isActive && key !== "all" ? `2px solid ${color}` : "none",
+                outlineOffset: 1,
+                transition: "all 0.15s",
+              }}
+            >
+              <div style={{ fontSize: "1.4rem", fontWeight: 700, color }}>{value}</div>
+              <div style={{ fontSize: "0.75rem", color: "var(--bfc-base-c-2)" }}>{label}</div>
+            </div>
+          );
+        })}
         <div style={{ flex: 1, minWidth: 200 }}>
           <div style={{ display: "flex", justifyContent: "space-between", fontSize: "0.8rem", color: "var(--bfc-base-c-2)", marginBottom: "0.3rem" }}>
             <span>Samlet fremdrift</span><span>{overallPct}%</span>
@@ -352,15 +398,34 @@ function OwnPlanView({
         </div>
       </div>
 
+      {/* Active filter indicator */}
+      {filter !== "all" && (
+        <div style={{ display: "flex", alignItems: "center", gap: "0.5rem", marginBottom: "1rem" }}>
+          <span style={{ fontSize: "0.8rem", color: "var(--bfc-base-c-2)" }}>
+            Viser: <strong>{FILTER_LABELS[filter]}</strong> ({visibleTasks.length} oppgaver)
+          </span>
+          <button
+            onClick={() => setFilter("all")}
+            style={{ background: "none", border: "1px solid var(--bfc-base-dimmed)", cursor: "pointer", color: "var(--bfc-base-c-2)", padding: "1px 8px", borderRadius: 4, fontSize: "0.78rem" }}
+          >
+            × Fjern filter
+          </button>
+        </div>
+      )}
+
       {/* Buckets */}
       <div style={{ display: "grid", gap: "1.5rem" }}>
         {ordered.map((bucket) => {
-          const tasks = plan.tasks.filter((t) => (t.bucket ?? "") === bucket);
+          const tasks = visibleTasks.filter((t) => (t.bucket ?? "") === bucket);
+          if (tasks.length === 0 && filter !== "all") return null;
+          const allTasks = plan.tasks.filter((t) => (t.bucket ?? "") === bucket);
           return (
             <BucketGroup
               key={bucket || "__none__"}
               bucket={bucket || "Uten fase"}
               tasks={tasks}
+              allTaskCount={allTasks.length}
+              filtered={filter !== "all"}
               onAdd={() => onAdd(bucket)}
               onEdit={onEdit}
               onDelete={onDelete}
@@ -376,23 +441,28 @@ function OwnPlanView({
 // ─── Bucket group ─────────────────────────────────────────────────────────────
 
 function BucketGroup({
-  bucket, tasks, onAdd, onEdit, onDelete, onUpdateProgress,
+  bucket, tasks, allTaskCount, filtered, onAdd, onEdit, onDelete, onUpdateProgress,
 }: {
   bucket: string;
   tasks: ProjectPlanTask[];
+  allTaskCount: number;
+  filtered: boolean;
   onAdd: () => void;
   onEdit: (t: ProjectPlanTask) => void;
   onDelete: (t: ProjectPlanTask) => void;
   onUpdateProgress: (t: ProjectPlanTask, pct: number) => void;
 }) {
-  const avg = tasks.length > 0 ? Math.round(tasks.reduce((s, t) => s + t.percent_complete, 0) / tasks.length) : 0;
+  const avg = allTaskCount > 0 ? Math.round(tasks.reduce((s, t) => s + t.percent_complete, 0) / allTaskCount) : 0;
   const done = tasks.filter((t) => t.percent_complete === 100).length;
 
   return (
     <div>
       <div style={{ display: "flex", alignItems: "center", gap: "0.75rem", marginBottom: "0.5rem" }}>
         <h3 className="bf-h4" style={{ margin: 0, flex: 1 }}>{bucket}</h3>
-        <span style={{ fontSize: "0.75rem", color: "var(--bfc-base-c-3)" }}>{done}/{tasks.length} ferdig · {avg}%</span>
+        <span style={{ fontSize: "0.75rem", color: "var(--bfc-base-c-3)" }}>
+          {done}/{allTaskCount} ferdig · {avg}%
+          {filtered && tasks.length < allTaskCount && ` (viser ${tasks.length})`}
+        </span>
         <div style={{ width: 80, height: 6, borderRadius: 3, background: "var(--bfc-base-dimmed)", overflow: "hidden" }}>
           <div style={{ width: `${avg}%`, height: "100%", background: avg === 100 ? "#2F9E44" : "#1971C2", borderRadius: 3, transition: "width 0.3s" }} />
         </div>
@@ -691,34 +761,58 @@ function PlannerView({
 // ─── Planner task grid ────────────────────────────────────────────────────────
 
 function PlannerTaskGrid({ data }: { data: PlannerData }) {
+  const [filter, setFilter] = useState<Filter>("all");
+
   const bucketMap = Object.fromEntries(data.buckets.map((b) => [b.id, b.name]));
-  const grouped: Record<string, PlannerTask[]> = {};
+
+  // All tasks grouped by bucket (unfiltered, for counts/progress)
+  const allGrouped: Record<string, PlannerTask[]> = {};
   for (const task of data.tasks) {
     const bucket = bucketMap[task.bucketId] ?? "Ukjent fase";
-    if (!grouped[bucket]) grouped[bucket] = [];
-    grouped[bucket].push(task);
+    if (!allGrouped[bucket]) allGrouped[bucket] = [];
+    allGrouped[bucket].push(task);
   }
 
   const total = data.tasks.length;
   const done = data.tasks.filter((t) => t.percentComplete === 100).length;
   const inProg = data.tasks.filter((t) => t.percentComplete > 0 && t.percentComplete < 100).length;
+  const remaining = total - done - inProg;
   const overallPct = total > 0 ? Math.round(data.tasks.reduce((s, t) => s + t.percentComplete, 0) / total) : 0;
+
+  const visibleTasks = data.tasks.filter((t) => matchPlannerFilter(t.percentComplete, filter));
+
+  const STAT_CARDS = [
+    { key: "all"         as Filter, label: "Totalt",   value: total,     color: "#868E96" },
+    { key: "done"        as Filter, label: "Ferdig",   value: done,      color: "#2F9E44" },
+    { key: "in_progress" as Filter, label: "Pågående", value: inProg,    color: "#1971C2" },
+    { key: "remaining"   as Filter, label: "Gjenstår", value: remaining, color: "#F76707" },
+  ];
 
   return (
     <div>
       {/* Stats */}
-      <div style={{ display: "flex", gap: "1rem", marginBottom: "1.75rem", flexWrap: "wrap", alignItems: "center" }}>
-        {[
-          { label: "Totalt", value: total, color: "#868E96" },
-          { label: "Ferdig", value: done, color: "#2F9E44" },
-          { label: "Pågående", value: inProg, color: "#1971C2" },
-          { label: "Gjenstår", value: total - done - inProg, color: "#F76707" },
-        ].map(({ label, value, color }) => (
-          <div key={label} style={{ padding: "0.6rem 1.1rem", borderRadius: 8, background: `${color}12`, border: `1px solid ${color}30`, textAlign: "center", minWidth: 80 }}>
-            <div style={{ fontSize: "1.4rem", fontWeight: 700, color }}>{value}</div>
-            <div style={{ fontSize: "0.75rem", color: "var(--bfc-base-c-2)" }}>{label}</div>
-          </div>
-        ))}
+      <div style={{ display: "flex", gap: "1rem", marginBottom: "1rem", flexWrap: "wrap", alignItems: "center" }}>
+        {STAT_CARDS.map(({ key, label, value, color }) => {
+          const isActive = filter === key;
+          return (
+            <div
+              key={key}
+              onClick={() => setFilter((prev) => (prev === key ? "all" : key))}
+              style={{
+                padding: "0.6rem 1.1rem", borderRadius: 8, textAlign: "center", minWidth: 80,
+                background: isActive ? `${color}22` : `${color}12`,
+                border: `1px solid ${isActive ? color : `${color}30`}`,
+                cursor: key === "all" ? "default" : "pointer",
+                outline: isActive && key !== "all" ? `2px solid ${color}` : "none",
+                outlineOffset: 1,
+                transition: "all 0.15s",
+              }}
+            >
+              <div style={{ fontSize: "1.4rem", fontWeight: 700, color }}>{value}</div>
+              <div style={{ fontSize: "0.75rem", color: "var(--bfc-base-c-2)" }}>{label}</div>
+            </div>
+          );
+        })}
         <div style={{ flex: 1, minWidth: 200 }}>
           <div style={{ display: "flex", justifyContent: "space-between", fontSize: "0.8rem", color: "var(--bfc-base-c-2)", marginBottom: "0.3rem" }}>
             <span>Samlet fremdrift</span><span>{overallPct}%</span>
@@ -729,16 +823,36 @@ function PlannerTaskGrid({ data }: { data: PlannerData }) {
         </div>
       </div>
 
+      {/* Active filter indicator */}
+      {filter !== "all" && (
+        <div style={{ display: "flex", alignItems: "center", gap: "0.5rem", marginBottom: "1rem" }}>
+          <span style={{ fontSize: "0.8rem", color: "var(--bfc-base-c-2)" }}>
+            Viser: <strong>{FILTER_LABELS[filter]}</strong> ({visibleTasks.length} oppgaver)
+          </span>
+          <button
+            onClick={() => setFilter("all")}
+            style={{ background: "none", border: "1px solid var(--bfc-base-dimmed)", cursor: "pointer", color: "var(--bfc-base-c-2)", padding: "1px 8px", borderRadius: 4, fontSize: "0.78rem" }}
+          >
+            × Fjern filter
+          </button>
+        </div>
+      )}
+
       {/* Buckets */}
       <div style={{ display: "grid", gap: "1.5rem" }}>
-        {Object.entries(grouped).map(([bucket, tasks]) => {
-          const avg = Math.round(tasks.reduce((s, t) => s + t.percentComplete, 0) / tasks.length);
-          const bucketDone = tasks.filter((t) => t.percentComplete === 100).length;
+        {Object.entries(allGrouped).map(([bucket, allTasks]) => {
+          const tasks = visibleTasks.filter((t) => (bucketMap[t.bucketId] ?? "Ukjent fase") === bucket);
+          if (tasks.length === 0 && filter !== "all") return null;
+          const avg = allTasks.length > 0 ? Math.round(allTasks.reduce((s, t) => s + t.percentComplete, 0) / allTasks.length) : 0;
+          const bucketDone = allTasks.filter((t) => t.percentComplete === 100).length;
           return (
             <div key={bucket}>
               <div style={{ display: "flex", alignItems: "center", gap: "0.75rem", marginBottom: "0.5rem" }}>
                 <h3 className="bf-h4" style={{ margin: 0, flex: 1 }}>{bucket}</h3>
-                <span style={{ fontSize: "0.75rem", color: "var(--bfc-base-c-3)" }}>{bucketDone}/{tasks.length} ferdig · {avg}%</span>
+                <span style={{ fontSize: "0.75rem", color: "var(--bfc-base-c-3)" }}>
+                  {bucketDone}/{allTasks.length} ferdig · {avg}%
+                  {filter !== "all" && tasks.length < allTasks.length && ` (viser ${tasks.length})`}
+                </span>
                 <div style={{ width: 80, height: 6, borderRadius: 3, background: "var(--bfc-base-dimmed)", overflow: "hidden" }}>
                   <div style={{ width: `${avg}%`, height: "100%", background: avg === 100 ? "#2F9E44" : "#1971C2", borderRadius: 3, transition: "width 0.3s" }} />
                 </div>
@@ -789,6 +903,22 @@ function PlannerTaskRow({ task }: { task: PlannerTask }) {
       }}>
         {task.title}
       </span>
+
+      {/* Labels */}
+      {task.labels && task.labels.length > 0 && (
+        <div style={{ display: "flex", gap: "0.3rem", flexShrink: 0, flexWrap: "wrap", maxWidth: 200 }}>
+          {task.labels.map((label) => (
+            <span key={label} style={{
+              fontSize: "0.7rem", fontWeight: 600,
+              padding: "2px 7px", borderRadius: 20,
+              background: "#7950F218", color: "#7950F2",
+              whiteSpace: "nowrap",
+            }}>
+              {label}
+            </span>
+          ))}
+        </div>
+      )}
 
       {(task.startDateTime || task.dueDateTime) && (
         <span style={{ fontSize: "0.75rem", color: "var(--bfc-base-c-3)", flexShrink: 0, whiteSpace: "nowrap" }}>
