@@ -43,7 +43,12 @@ export async function fetchPlannerData(
   try {
     tokenResponse = await msal.acquireTokenSilent({ scopes: PLANNER_SCOPES, account });
   } catch {
-    tokenResponse = await msal.acquireTokenPopup({ scopes: PLANNER_SCOPES });
+    // Silent token acquisition failed (consent needed or token expired).
+    // Use redirect — popup is unreliable in our SPA setup.
+    sessionStorage.setItem("app.returnUrl", window.location.href);
+    await msal.acquireTokenRedirect({ scopes: PLANNER_SCOPES, account });
+    // Never reached — page navigates away
+    throw new Error("Omdirigerer til innlogging…");
   }
 
   const token = tokenResponse.accessToken;

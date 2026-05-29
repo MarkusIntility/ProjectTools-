@@ -99,13 +99,13 @@ export default function RunbookPage() {
 
   async function loginPlanner() {
     if (!isMsalConfigured || !msalReady) return;
-    // Use redirect (not popup) — popup flows fail because MSAL popup and parent
-    // window have separate module instances and can't communicate via postMessage.
-    // MSAL will navigate back to this exact URL after auth (redirectStartPage).
-    await msalInstance.loginRedirect({
-      scopes: PLANNER_SCOPES,
-      redirectStartPage: window.location.href,
-    });
+    // Clear stale interaction flags from any previous failed attempts
+    Object.keys(sessionStorage)
+      .filter((k) => k.includes("interaction"))
+      .forEach((k) => sessionStorage.removeItem(k));
+    // Store return URL — main.tsx reads this after auth and navigates back here
+    sessionStorage.setItem("app.returnUrl", window.location.href);
+    await msalInstance.loginRedirect({ scopes: PLANNER_SCOPES });
   }
 
   function refreshPlanner() {

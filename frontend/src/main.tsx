@@ -10,14 +10,25 @@ import { msalInstance, isMsalConfigured } from "./auth/msalConfig";
 
 async function bootstrap() {
   if (isMsalConfigured) {
-    // Initialize MSAL before React renders so handleRedirectPromise() processes
-    // the ?code= from loginRedirect before React Router's <Navigate> strips them.
     try {
+      // Must run before React renders so ?code= in URL is read before
+      // React Router's <Navigate> strips it from window.location.
       await msalInstance.initialize();
-      // After initialize(), MSAL auto-navigates to redirectStartPage if returning
-      // from loginRedirect. If that navigation fires, this code won't continue.
+
+      // MSAL v3 does not auto-navigate to redirectStartPage after loginRedirect.
+      // We store the return URL ourselves and navigate here after successful auth.
+      const returnUrl = sessionStorage.getItem("app.returnUrl");
+      if (returnUrl) {
+        sessionStorage.removeItem("app.returnUrl");
+        // If auth succeeded there will be at least one account in the cache
+        if (msalInstance.getAllAccounts().length > 0) {
+          window.location.replace(returnUrl);
+          return; // Don't render React — a new page load is starting
+        }
+        // Auth failed/cancelled — fall through and render at current location
+      }
     } catch (err) {
-      // Store error so RunbookPage can display it after redirect
+      sessionStorage.removeItem("app.returnUrl");
       sessionStorage.setItem("msal.bootError", err instanceof Error ? err.message : String(err));
     }
   }
