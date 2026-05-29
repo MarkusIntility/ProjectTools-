@@ -93,6 +93,10 @@ export default function RunbookPage() {
 
   async function loginPlanner() {
     if (!isMsalConfigured || !msalReady) return;
+    // Clear stale interaction flags left by previous failed popup attempts
+    Object.keys(sessionStorage)
+      .filter((k) => k.includes("interaction.status") || k.includes("interaction_in_progress"))
+      .forEach((k) => sessionStorage.removeItem(k));
     try {
       const result = await msalInstance.loginPopup({ scopes: PLANNER_SCOPES });
       setPlannerAccount(result.account);
