@@ -44,11 +44,12 @@ interface DataverseTask {
   msdyn_scheduledend: string | null;
   "_msdyn_projectbucket_value"?: string | null;
   "_msdyn_resourcecategory_value"?: string | null;
+  "_msdyn_projectsprint_value"?: string | null;
 }
 
-interface DataverseResourceCategory {
-  msdyn_resourcecategoryid: string;
-  msdyn_name: string;
+interface DataverseLabelEntity {
+  id: string;
+  name: string;
 }
 
 interface DataverseBucket {
@@ -154,6 +155,7 @@ async function fetchPlannerPremiumData(
       "msdyn_scheduledend",
       "_msdyn_projectbucket_value",
       "_msdyn_resourcecategory_value",
+      "_msdyn_projectsprint_value",
     ].join(",");
 
     const tasksUrl = `${apiUrl}/api/data/v9.2/msdyn_projecttasks?$filter=_msdyn_project_value eq ${planId}&$select=${taskFields}&$orderby=msdyn_scheduledstart asc`;
@@ -179,10 +181,14 @@ async function fetchPlannerPremiumData(
     const { value: dvTasks }: { value: DataverseTask[] } = await tasksRes.json();
     console.log(`[Planner] Fant ${dvTasks.length} oppgaver i ${candidate.FriendlyName}`);
 
-    // Fetch buckets and resource categories (fagavdeling labels) in parallel
-    const [bucketsRes, catRes] = await Promise.all([
+    // Fetch buckets and try multiple label sources in parallel
+    const [bucketsRes, sprintRes, rcatRes] = await Promise.all([
       fetch(
         `${apiUrl}/api/data/v9.2/msdyn_projectbuckets?$filter=_msdyn_project_value eq ${planId}&$select=msdyn_projectbucketid,msdyn_name&$orderby=msdyn_name asc`,
+        { headers: dvHeaders }
+      ),
+      fetch(
+        `${apiUrl}/api/data/v9.2/msdyn_projectsprints?$filter=_msdyn_project_value eq ${planId}&$select=msdyn_projectsprintid,msdyn_name`,
         { headers: dvHeaders }
       ),
       fetch(
@@ -197,12 +203,34 @@ async function fetchPlannerPremiumData(
       dvBuckets = value || [];
     }
 
-    const categoryMap: Record<string, string> = {};
-    if (catRes.ok) {
-      const { value: categories }: { value: DataverseResourceCategory[] } = await catRes.json();
-      for (const cat of categories) {
-        categoryMap[cat.msdyn_resourcecategoryid] = cat.msdyn_name;
+    // Build label map: try sprints first, then resource categories
+    const labelMap: Record<string, string> = {};
+    let labelField: "_msdyn_projectsprint_value" | "_msdyn_resourcecategory_value" | null = null;
+
+    if (sprintRes.ok) {
+      const { value: sprints } = await sprintRes.json();
+      if (sprints?.length > 0) {
+        console.log("[Planner Premium] Bruker sprints som labels:", sprints.map((s: Record<string, string>) => s.msdyn_name).join(", "));
+        for (const s of sprints) {
+          labelMap[s.msdyn_projectsprintid] = s.msdyn_name;
+        }
+        labelField = "_msdyn_projectsprint_value";
       }
+    }
+
+    if (!labelField && rcatRes.ok) {
+      const { value: rcats } = await rcatRes.json();
+      if (rcats?.length > 0) {
+        console.log("[Planner Premium] Bruker resource categories som labels:", rcats.map((c: Record<string, string>) => c.msdyn_name).join(", "));
+        for (const c of rcats) {
+          labelMap[c.msdyn_resourcecategoryid] = c.msdyn_name;
+        }
+        labelField = "_msdyn_resourcecategory_value";
+      }
+    }
+
+    if (!labelField) {
+      console.log("[Planner Premium] Ingen label-kilde funnet (sprints:", sprintRes.status, "/ resourcecategories:", rcatRes.status, ")");
     }
 
     const buckets: PlannerBucket[] =
@@ -218,8 +246,8 @@ async function fetchPlannerPremiumData(
 
     const tasks: PlannerTask[] = dvTasks.map((t) => {
       const pct = Math.round((t.msdyn_progress ?? 0) * 100);
-      const catId = t["_msdyn_resourcecategory_value"];
-      const labels = catId && categoryMap[catId] ? [categoryMap[catId]] : [];
+      const labelId = labelField ? t[labelField] : null;
+      const labels = labelId && labelMap[labelId] ? [labelMap[labelId]] : [];
       return {
         id: t.msdyn_projecttaskid,
         title: t.msdyn_subject,
