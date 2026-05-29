@@ -23,8 +23,8 @@ export interface PlannerData {
   tasks: PlannerTask[];
 }
 
-async function graphRequest<T>(token: string, path: string): Promise<T> {
-  const res = await fetch(`https://graph.microsoft.com/v1.0${path}`, {
+async function graphRequest<T>(token: string, path: string, apiVersion = "v1.0"): Promise<T> {
+  const res = await fetch(`https://graph.microsoft.com/${apiVersion}${path}`, {
     headers: { Authorization: `Bearer ${token}` },
   });
   if (!res.ok) {
@@ -53,27 +53,32 @@ export async function fetchPlannerData(
 
   const token = tokenResponse.accessToken;
 
-  // Verify plan exists before fetching tasks (catches Premium plan 404 early)
-  const planCheck = await fetch(`https://graph.microsoft.com/v1.0/planner/plans/${planId}`, {
-    headers: { Authorization: `Bearer ${token}` },
-  });
-
-  if (!planCheck.ok) {
-    if (planCheck.status === 404) {
+  // Try v1.0 first, fall back to beta for Planner Premium plans
+  const apiVersion = await (async () => {
+    const check = await fetch(`https://graph.microsoft.com/v1.0/planner/plans/${planId}`, {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    if (check.ok) return "v1.0";
+    if (check.status === 404) {
+      // Try beta — Microsoft is rolling out Premium plan support there
+      const betaCheck = await fetch(`https://graph.microsoft.com/beta/planner/plans/${planId}`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (betaCheck.ok) return "beta";
+      // Neither version found the plan
       throw new Error(
-        "PREMIUM_PLAN: Planen ble ikke funnet via standard Planner API. " +
-        "Planner Premium-planer (planner.cloud.microsoft/premiumplan/) er " +
-        "lagret i Dataverse og støttes ikke av Graph API /planner/plans/. " +
-        "Bruk «Åpne i Planner»-lenken for å se planen direkte, eller opprett " +
-        "en Basic Planner-plan for API-integrasjon."
+        "PREMIUM_PLAN: Planen ble ikke funnet verken i Graph v1.0 eller beta. " +
+        "Planner Premium-planer lagret i Dataverse er ikke tilgjengelige via " +
+        "standard Graph Planner API. Bruk «Åpne i Planner»-lenken for å se " +
+        "planen direkte, eller opprett en Basic Planner-plan for API-integrasjon."
       );
     }
-    throw new Error(`Graph API feil (${planCheck.status}): ${await planCheck.text()}`);
-  }
+    throw new Error(`Graph API feil (${check.status}): ${await check.text()}`);
+  })();
 
   const [bucketsData, tasksData] = await Promise.all([
-    graphRequest<{ value: PlannerBucket[] }>(token, `/planner/plans/${planId}/buckets`),
-    graphRequest<{ value: PlannerTask[] }>(token, `/planner/plans/${planId}/tasks`),
+    graphRequest<{ value: PlannerBucket[] }>(token, `/planner/plans/${planId}/buckets`, apiVersion),
+    graphRequest<{ value: PlannerTask[] }>(token, `/planner/plans/${planId}/tasks`, apiVersion),
   ]);
 
   return { buckets: bucketsData.value, tasks: tasksData.value };
