@@ -10,14 +10,16 @@ import { msalInstance, isMsalConfigured } from "./auth/msalConfig";
 
 async function bootstrap() {
   if (isMsalConfigured) {
-    // Initialize MSAL BEFORE React renders so URL params (?code=, ?state=) are
-    // read before React Router's <Navigate> strips them from window.location.
-    await msalInstance.initialize();
-
-    // If this window is an MSAL popup (opened by loginPopup), MSAL has already
-    // processed the auth response above. Skip rendering React — the popup will
-    // close itself automatically.
-    if (window.opener !== null) return;
+    // Initialize MSAL before React renders so handleRedirectPromise() processes
+    // the ?code= from loginRedirect before React Router's <Navigate> strips them.
+    try {
+      await msalInstance.initialize();
+      // After initialize(), MSAL auto-navigates to redirectStartPage if returning
+      // from loginRedirect. If that navigation fires, this code won't continue.
+    } catch (err) {
+      // Store error so RunbookPage can display it after redirect
+      sessionStorage.setItem("msal.bootError", err instanceof Error ? err.message : String(err));
+    }
   }
 
   createRoot(document.getElementById("root")!).render(

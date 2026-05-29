@@ -64,9 +64,15 @@ export default function RunbookPage() {
     api.runbooks.get(projectId, runbookId).then(setRunbook);
   }, [projectId, runbookId]);
 
-  // Check for existing MSAL login on mount
+  // Check for existing MSAL login on mount (including after loginRedirect return)
   useEffect(() => {
     if (!isMsalConfigured) return;
+    const bootError = sessionStorage.getItem("msal.bootError");
+    if (bootError) {
+      sessionStorage.removeItem("msal.bootError");
+      setPlannerError(`Innlogging feilet: ${bootError}`);
+      return;
+    }
     const accounts = msalInstance.getAllAccounts();
     if (accounts.length > 0) setPlannerAccount(accounts[0]);
   }, []);
@@ -93,17 +99,13 @@ export default function RunbookPage() {
 
   async function loginPlanner() {
     if (!isMsalConfigured || !msalReady) return;
-    // Clear stale interaction flags left by previous failed popup attempts
-    Object.keys(sessionStorage)
-      .filter((k) => k.includes("interaction.status") || k.includes("interaction_in_progress"))
-      .forEach((k) => sessionStorage.removeItem(k));
-    try {
-      const result = await msalInstance.loginPopup({ scopes: PLANNER_SCOPES });
-      setPlannerAccount(result.account);
-    } catch (err) {
-      const msg = err instanceof Error ? err.message : String(err);
-      setPlannerError(`Innlogging feilet: ${msg}`);
-    }
+    // Use redirect (not popup) — popup flows fail because MSAL popup and parent
+    // window have separate module instances and can't communicate via postMessage.
+    // MSAL will navigate back to this exact URL after auth (redirectStartPage).
+    await msalInstance.loginRedirect({
+      scopes: PLANNER_SCOPES,
+      redirectStartPage: window.location.href,
+    });
   }
 
   function refreshPlanner() {
