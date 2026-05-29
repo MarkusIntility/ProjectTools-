@@ -19,4 +19,4 @@ const config: Configuration = {
 
 export const msalInstance = new PublicClientApplication(config);
 
-export const PLANNER_SCOPES = ["Tasks.Read", "Group.Read.All"];
+export const PLANNER_SCOPES = ["Tasks.Read"];
