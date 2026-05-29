@@ -20,3 +20,14 @@ spec:
       selfHeal: true
     syncOptions:
       - CreateNamespace=true
+  ignoreDifferences:
+    - group: ""
+      kind: Secret
+      name: projecttools-secrets
+      jsonPointers:
+        - /data
+    - group: ""
+      kind: Secret
+      name: mssql-secret
+      jsonPointers:
+        - /data
