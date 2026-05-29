@@ -31,6 +31,17 @@ def get_plan(project_id: str, plan_id: str, db: Session = Depends(get_db)):
     return plan
 
 
+@router.put("/{plan_id}", response_model=MeetingPlanResponse)
+def update_plan(project_id: str, plan_id: str, data: MeetingPlanCreate, db: Session = Depends(get_db)):
+    plan = db.query(MeetingPlan).filter(MeetingPlan.id == plan_id, MeetingPlan.project_id == project_id).first()
+    if not plan:
+        raise HTTPException(status_code=404, detail="Meeting plan not found")
+    plan.title = data.title
+    db.commit()
+    db.refresh(plan)
+    return plan
+
+
 @router.delete("/{plan_id}", status_code=204)
 def delete_plan(project_id: str, plan_id: str, db: Session = Depends(get_db)):
     plan = db.query(MeetingPlan).filter(MeetingPlan.id == plan_id, MeetingPlan.project_id == project_id).first()

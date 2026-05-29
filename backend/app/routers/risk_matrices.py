@@ -31,6 +31,17 @@ def get_matrix(project_id: str, matrix_id: str, db: Session = Depends(get_db)):
     return matrix
 
 
+@router.put("/{matrix_id}", response_model=RiskMatrixResponse)
+def update_matrix(project_id: str, matrix_id: str, data: RiskMatrixCreate, db: Session = Depends(get_db)):
+    matrix = db.query(RiskMatrix).filter(RiskMatrix.id == matrix_id, RiskMatrix.project_id == project_id).first()
+    if not matrix:
+        raise HTTPException(status_code=404, detail="Risk matrix not found")
+    matrix.title = data.title
+    db.commit()
+    db.refresh(matrix)
+    return matrix
+
+
 @router.delete("/{matrix_id}", status_code=204)
 def delete_matrix(project_id: str, matrix_id: str, db: Session = Depends(get_db)):
     matrix = db.query(RiskMatrix).filter(RiskMatrix.id == matrix_id, RiskMatrix.project_id == project_id).first()

@@ -31,6 +31,17 @@ def get_plan(project_id: str, plan_id: str, db: Session = Depends(get_db)):
     return plan
 
 
+@router.put("/{plan_id}", response_model=CommunicationPlanResponse)
+def update_plan(project_id: str, plan_id: str, data: CommunicationPlanCreate, db: Session = Depends(get_db)):
+    plan = db.query(CommunicationPlan).filter(CommunicationPlan.id == plan_id, CommunicationPlan.project_id == project_id).first()
+    if not plan:
+        raise HTTPException(status_code=404, detail="Communication plan not found")
+    plan.title = data.title
+    db.commit()
+    db.refresh(plan)
+    return plan
+
+
 @router.delete("/{plan_id}", status_code=204)
 def delete_plan(project_id: str, plan_id: str, db: Session = Depends(get_db)):
     plan = db.query(CommunicationPlan).filter(CommunicationPlan.id == plan_id, CommunicationPlan.project_id == project_id).first()
