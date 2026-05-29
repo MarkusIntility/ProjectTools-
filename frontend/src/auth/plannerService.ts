@@ -21,7 +21,6 @@ export interface PlannerTask {
   labels?: string[];
   outlineLevel?: number;   // 1 = fase, 2 = leveranse, 3 = lokasjon/pulje
   parentTaskId?: string | null;
-  outline?: string;        // WBS-posisjon, f.eks. "1.2.3"
 }
 
 export interface PlannerData {
@@ -50,7 +49,6 @@ interface DataverseTask {
   "_msdyn_projectsprint_value"?: string | null;
   "_msdyn_parenttask_value"?: string | null;
   msdyn_outlinelevel?: number;
-  msdyn_outline?: string;
 }
 
 
@@ -160,7 +158,6 @@ async function fetchPlannerPremiumData(
       "_msdyn_projectsprint_value",
       "_msdyn_parenttask_value",
       "msdyn_outlinelevel",
-      "msdyn_outline",
     ].join(",");
 
     const tasksUrl = `${apiUrl}/api/data/v9.2/msdyn_projecttasks?$filter=_msdyn_project_value eq ${planId}&$select=${taskFields}&$orderby=msdyn_scheduledstart asc`;
@@ -265,7 +262,6 @@ async function fetchPlannerPremiumData(
         labels,
         outlineLevel: t.msdyn_outlinelevel,
         parentTaskId: t["_msdyn_parenttask_value"] ?? null,
-        outline: t.msdyn_outline,
       };
     });
 

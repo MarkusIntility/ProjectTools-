@@ -299,15 +299,6 @@ export default function ProjectPlanPage() {
 
 // ─── Filter helpers ───────────────────────────────────────────────────────────
 
-function compareOutline(a = "", b = ""): number {
-  const pa = a.split(".").map(Number);
-  const pb = b.split(".").map(Number);
-  for (let i = 0; i < Math.max(pa.length, pb.length); i++) {
-    const d = (pa[i] ?? 0) - (pb[i] ?? 0);
-    if (d !== 0) return d;
-  }
-  return 0;
-}
 
 type Filter = "all" | "done" | "in_progress" | "remaining";
 
@@ -809,14 +800,12 @@ function PlannerTaskGrid({ data }: { data: PlannerData }) {
 
   // ── Hierarchical data setup ──────────────────────────────────────────────────
   const l1Tasks = isHierarchical
-    ? data.tasks.filter((t) => (t.outlineLevel ?? 1) === 1).sort((a, b) => compareOutline(a.outline, b.outline))
+    ? data.tasks.filter((t) => (t.outlineLevel ?? 1) === 1)
     : [];
 
   const l2ByL1: Record<string, PlannerTask[]> = {};
   if (isHierarchical) {
-    const l2Tasks = data.tasks
-      .filter((t) => (t.outlineLevel ?? 1) === 2)
-      .sort((a, b) => compareOutline(a.outline, b.outline));
+    const l2Tasks = data.tasks.filter((t) => (t.outlineLevel ?? 1) === 2);
     for (const t of l2Tasks) {
       const key = t.parentTaskId ?? "__orphan__";
       if (!l2ByL1[key]) l2ByL1[key] = [];
