@@ -299,6 +299,16 @@ export default function ProjectPlanPage() {
 
 // ─── Filter helpers ───────────────────────────────────────────────────────────
 
+function compareOutline(a = "", b = ""): number {
+  const pa = a.split(".").map(Number);
+  const pb = b.split(".").map(Number);
+  for (let i = 0; i < Math.max(pa.length, pb.length); i++) {
+    const d = (pa[i] ?? 0) - (pb[i] ?? 0);
+    if (d !== 0) return d;
+  }
+  return 0;
+}
+
 type Filter = "all" | "done" | "in_progress" | "remaining";
 
 const FILTER_LABELS: Record<Filter, string> = {
@@ -764,34 +774,68 @@ function PlannerTaskGrid({ data }: { data: PlannerData }) {
   const [filter, setFilter] = useState<Filter>("all");
 
   const bucketMap = Object.fromEntries(data.buckets.map((b) => [b.id, b.name]));
+  const taskMap = Object.fromEntries(data.tasks.map((t) => [t.id, t]));
 
-  // All tasks grouped by bucket (unfiltered, for counts/progress)
-  const allGrouped: Record<string, PlannerTask[]> = {};
-  for (const task of data.tasks) {
-    const bucket = bucketMap[task.bucketId] ?? "Ukjent";
-    if (!allGrouped[bucket]) allGrouped[bucket] = [];
-    allGrouped[bucket].push(task);
+  // Hierarchical = Planner Premium plan with L1 (fase) / L2 (leveranse) structure
+  const isHierarchical = data.tasks.some((t) => (t.outlineLevel ?? 1) > 1);
+
+  function getFagomrade(task: PlannerTask): string {
+    if (bucketMap[task.bucketId]) return bucketMap[task.bucketId];
+    if (task.parentTaskId) {
+      const parent = taskMap[task.parentTaskId];
+      if (parent && bucketMap[parent.bucketId]) return bucketMap[parent.bucketId];
+    }
+    return "";
   }
 
-  // Ordered bucket names: follow API bucket order, then any orphaned groups last
-  const orderedBucketNames = [
-    ...data.buckets.map((b) => b.name).filter((n) => allGrouped[n]),
-    ...Object.keys(allGrouped).filter((n) => !data.buckets.find((b) => b.name === n)),
-  ];
+  // Stats count: L2 leveranser in hierarchical mode, all tasks in flat mode
+  const statSource = isHierarchical
+    ? data.tasks.filter((t) => (t.outlineLevel ?? 1) === 2)
+    : data.tasks;
 
-  const total = data.tasks.length;
-  const done = data.tasks.filter((t) => t.percentComplete === 100).length;
-  const inProg = data.tasks.filter((t) => t.percentComplete > 0 && t.percentComplete < 100).length;
+  const total = statSource.length;
+  const done = statSource.filter((t) => t.percentComplete === 100).length;
+  const inProg = statSource.filter((t) => t.percentComplete > 0 && t.percentComplete < 100).length;
   const remaining = total - done - inProg;
-  const overallPct = total > 0 ? Math.round(data.tasks.reduce((s, t) => s + t.percentComplete, 0) / total) : 0;
-
-  const visibleTasks = data.tasks.filter((t) => matchPlannerFilter(t.percentComplete, filter));
+  const overallPct = total > 0 ? Math.round(statSource.reduce((s, t) => s + t.percentComplete, 0) / total) : 0;
+  const visibleStats = statSource.filter((t) => matchPlannerFilter(t.percentComplete, filter));
 
   const STAT_CARDS = [
     { key: "all"         as Filter, label: "Totalt",   value: total,     color: "#868E96" },
     { key: "done"        as Filter, label: "Ferdig",   value: done,      color: "#2F9E44" },
     { key: "in_progress" as Filter, label: "Pågående", value: inProg,    color: "#1971C2" },
     { key: "remaining"   as Filter, label: "Gjenstår", value: remaining, color: "#F76707" },
+  ];
+
+  // ── Hierarchical data setup ──────────────────────────────────────────────────
+  const l1Tasks = isHierarchical
+    ? data.tasks.filter((t) => (t.outlineLevel ?? 1) === 1).sort((a, b) => compareOutline(a.outline, b.outline))
+    : [];
+
+  const l2ByL1: Record<string, PlannerTask[]> = {};
+  if (isHierarchical) {
+    const l2Tasks = data.tasks
+      .filter((t) => (t.outlineLevel ?? 1) === 2)
+      .sort((a, b) => compareOutline(a.outline, b.outline));
+    for (const t of l2Tasks) {
+      const key = t.parentTaskId ?? "__orphan__";
+      if (!l2ByL1[key]) l2ByL1[key] = [];
+      l2ByL1[key].push(t);
+    }
+  }
+
+  // ── Flat data setup ──────────────────────────────────────────────────────────
+  const allGrouped: Record<string, PlannerTask[]> = {};
+  if (!isHierarchical) {
+    for (const task of data.tasks) {
+      const bucket = bucketMap[task.bucketId] ?? "Ukjent";
+      if (!allGrouped[bucket]) allGrouped[bucket] = [];
+      allGrouped[bucket].push(task);
+    }
+  }
+  const orderedBucketNames = isHierarchical ? [] : [
+    ...data.buckets.map((b) => b.name).filter((n) => allGrouped[n]),
+    ...Object.keys(allGrouped).filter((n) => !data.buckets.find((b) => b.name === n)),
   ];
 
   return (
@@ -833,7 +877,7 @@ function PlannerTaskGrid({ data }: { data: PlannerData }) {
       {filter !== "all" && (
         <div style={{ display: "flex", alignItems: "center", gap: "0.5rem", marginBottom: "1rem" }}>
           <span style={{ fontSize: "0.8rem", color: "var(--bfc-base-c-2)" }}>
-            Viser: <strong>{FILTER_LABELS[filter]}</strong> ({visibleTasks.length} oppgaver)
+            Viser: <strong>{FILTER_LABELS[filter]}</strong> ({visibleStats.length} {isHierarchical ? "leveranser" : "oppgaver"})
           </span>
           <button
             onClick={() => setFilter("all")}
@@ -844,38 +888,84 @@ function PlannerTaskGrid({ data }: { data: PlannerData }) {
         </div>
       )}
 
-      {/* Buckets */}
       <div style={{ display: "grid", gap: "1.5rem" }}>
-        {orderedBucketNames.map((bucket) => {
-          const allTasks = allGrouped[bucket] ?? [];
-          const tasks = visibleTasks.filter((t) => (bucketMap[t.bucketId] ?? "Ukjent") === bucket);
-          if (tasks.length === 0 && filter !== "all") return null;
-          const avg = allTasks.length > 0 ? Math.round(allTasks.reduce((s, t) => s + t.percentComplete, 0) / allTasks.length) : 0;
-          const bucketDone = allTasks.filter((t) => t.percentComplete === 100).length;
-          return (
-            <div key={bucket}>
-              <div style={{ display: "flex", alignItems: "center", gap: "0.75rem", marginBottom: "0.5rem" }}>
-                <h3 className="bf-h4" style={{ margin: 0, flex: 1 }}>{bucket}</h3>
-                <span style={{ fontSize: "0.75rem", color: "var(--bfc-base-c-3)" }}>
-                  {bucketDone}/{allTasks.length} ferdig · {avg}%
-                  {filter !== "all" && tasks.length < allTasks.length && ` (viser ${tasks.length})`}
-                </span>
-                <div style={{ width: 80, height: 6, borderRadius: 3, background: "var(--bfc-base-dimmed)", overflow: "hidden" }}>
-                  <div style={{ width: `${avg}%`, height: "100%", background: avg === 100 ? "#2F9E44" : "#1971C2", borderRadius: 3, transition: "width 0.3s" }} />
+        {isHierarchical ? (
+          // ── Hierarchical: L1 (fase) as section headers, L2 (leveranse) as rows with fagomrade chip
+          <>
+            {l1Tasks.map((l1) => {
+              const allL2 = l2ByL1[l1.id] ?? [];
+              const visibleL2 = allL2.filter((t) => matchPlannerFilter(t.percentComplete, filter));
+              if (visibleL2.length === 0 && filter !== "all") return null;
+              const avg = allL2.length > 0 ? Math.round(allL2.reduce((s, t) => s + t.percentComplete, 0) / allL2.length) : 0;
+              const sectionDone = allL2.filter((t) => t.percentComplete === 100).length;
+              return (
+                <div key={l1.id}>
+                  <div style={{ display: "flex", alignItems: "center", gap: "0.75rem", marginBottom: "0.5rem" }}>
+                    <h3 className="bf-h4" style={{ margin: 0, flex: 1 }}>{l1.title}</h3>
+                    <span style={{ fontSize: "0.75rem", color: "var(--bfc-base-c-3)" }}>
+                      {sectionDone}/{allL2.length} ferdig · {avg}%
+                      {filter !== "all" && visibleL2.length < allL2.length && ` (viser ${visibleL2.length})`}
+                    </span>
+                    <div style={{ width: 80, height: 6, borderRadius: 3, background: "var(--bfc-base-dimmed)", overflow: "hidden" }}>
+                      <div style={{ width: `${avg}%`, height: "100%", background: avg === 100 ? "#2F9E44" : "#1971C2", borderRadius: 3, transition: "width 0.3s" }} />
+                    </div>
+                  </div>
+                  <div style={{ display: "grid", gap: "0.35rem" }}>
+                    {visibleL2.map((t) => <PlannerTaskRow key={t.id} task={t} fagomrade={getFagomrade(t)} />)}
+                  </div>
                 </div>
-              </div>
-              <div style={{ display: "grid", gap: "0.35rem" }}>
-                {tasks.map((task) => <PlannerTaskRow key={task.id} task={task} />)}
-              </div>
-            </div>
-          );
-        })}
+              );
+            })}
+            {(l2ByL1["__orphan__"] ?? []).length > 0 && (() => {
+              const visible = (l2ByL1["__orphan__"] ?? []).filter((t) => matchPlannerFilter(t.percentComplete, filter));
+              if (visible.length === 0 && filter !== "all") return null;
+              return (
+                <div>
+                  <div style={{ display: "flex", alignItems: "center", marginBottom: "0.5rem" }}>
+                    <h3 className="bf-h4" style={{ margin: 0, flex: 1, color: "var(--bfc-base-c-2)" }}>Uten fase</h3>
+                  </div>
+                  <div style={{ display: "grid", gap: "0.35rem" }}>
+                    {visible.map((t) => <PlannerTaskRow key={t.id} task={t} fagomrade={getFagomrade(t)} />)}
+                  </div>
+                </div>
+              );
+            })()}
+          </>
+        ) : (
+          // ── Flat: group by bucket (Basic Planner / flat Premium)
+          <>
+            {orderedBucketNames.map((bucket) => {
+              const allTasks = allGrouped[bucket] ?? [];
+              const tasks = allTasks.filter((t) => matchPlannerFilter(t.percentComplete, filter));
+              if (tasks.length === 0 && filter !== "all") return null;
+              const avg = allTasks.length > 0 ? Math.round(allTasks.reduce((s, t) => s + t.percentComplete, 0) / allTasks.length) : 0;
+              const bucketDone = allTasks.filter((t) => t.percentComplete === 100).length;
+              return (
+                <div key={bucket}>
+                  <div style={{ display: "flex", alignItems: "center", gap: "0.75rem", marginBottom: "0.5rem" }}>
+                    <h3 className="bf-h4" style={{ margin: 0, flex: 1 }}>{bucket}</h3>
+                    <span style={{ fontSize: "0.75rem", color: "var(--bfc-base-c-3)" }}>
+                      {bucketDone}/{allTasks.length} ferdig · {avg}%
+                      {filter !== "all" && tasks.length < allTasks.length && ` (viser ${tasks.length})`}
+                    </span>
+                    <div style={{ width: 80, height: 6, borderRadius: 3, background: "var(--bfc-base-dimmed)", overflow: "hidden" }}>
+                      <div style={{ width: `${avg}%`, height: "100%", background: avg === 100 ? "#2F9E44" : "#1971C2", borderRadius: 3, transition: "width 0.3s" }} />
+                    </div>
+                  </div>
+                  <div style={{ display: "grid", gap: "0.35rem" }}>
+                    {tasks.map((task) => <PlannerTaskRow key={task.id} task={task} />)}
+                  </div>
+                </div>
+              );
+            })}
+          </>
+        )}
       </div>
     </div>
   );
 }
 
-function PlannerTaskRow({ task }: { task: PlannerTask }) {
+function PlannerTaskRow({ task, fagomrade }: { task: PlannerTask; fagomrade?: string }) {
   const [hovered, setHovered] = useState(false);
   const pct = task.percentComplete;
   const isDone = pct === 100;
@@ -911,8 +1001,17 @@ function PlannerTaskRow({ task }: { task: PlannerTask }) {
         {task.title}
       </span>
 
-      {/* Labels */}
-      {task.labels && task.labels.length > 0 && (
+      {/* Fagområde chip (hierarchical Premium) or labels (Basic Planner) */}
+      {fagomrade ? (
+        <span style={{
+          fontSize: "0.7rem", fontWeight: 600, flexShrink: 0,
+          padding: "2px 8px", borderRadius: 20,
+          background: "#0078D418", color: "#0078D4",
+          whiteSpace: "nowrap",
+        }}>
+          {fagomrade}
+        </span>
+      ) : task.labels && task.labels.length > 0 ? (
         <div style={{ display: "flex", gap: "0.3rem", flexShrink: 0, flexWrap: "wrap", maxWidth: 200 }}>
           {task.labels.map((label) => (
             <span key={label} style={{
@@ -925,7 +1024,7 @@ function PlannerTaskRow({ task }: { task: PlannerTask }) {
             </span>
           ))}
         </div>
-      )}
+      ) : null}
 
       {(task.startDateTime || task.dueDateTime) && (
         <span style={{ fontSize: "0.75rem", color: "var(--bfc-base-c-3)", flexShrink: 0, whiteSpace: "nowrap" }}>
