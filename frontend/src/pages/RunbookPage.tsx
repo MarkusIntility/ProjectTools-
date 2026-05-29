@@ -3,7 +3,7 @@ import { useParams, useNavigate } from "react-router-dom";
 import { Button, Input, Modal } from "@intility/bifrost-react";
 import { api, type Runbook, type RunbookActivity } from "../api/client";
 import { isMsalConfigured, msalInstance, PLANNER_SCOPES } from "../auth/msalConfig";
-import { fetchPlannerData, parsePlanId, taskStatus, type PlannerData, type PlannerBucket, type PlannerTask } from "../auth/plannerService";
+import { fetchPlannerData, parsePlanId, taskStatus, type PlannerData, type PlannerTask } from "../auth/plannerService";
 import type { AccountInfo } from "@azure/msal-browser";
 
 // ─── Status config ────────────────────────────────────────────────────────────
@@ -765,7 +765,7 @@ function PlannerTaskList({ data, srcCfg }: { data: PlannerData; srcCfg: { color:
                 </div>
               </div>
               <div style={{ display: "grid", gap: "0.35rem" }}>
-                {tasks.map((task) => <PlannerTaskRow key={task.id} task={task} srcCfg={srcCfg} />)}
+                {tasks.map((task) => <PlannerTaskRow key={task.id} task={task} />)}
               </div>
             </div>
           );
@@ -775,7 +775,7 @@ function PlannerTaskList({ data, srcCfg }: { data: PlannerData; srcCfg: { color:
   );
 }
 
-function PlannerTaskRow({ task, srcCfg }: { task: PlannerTask; srcCfg: { color: string } }) {
+function PlannerTaskRow({ task }: { task: PlannerTask }) {
   const [hovered, setHovered] = useState(false);
   const status = taskStatus(task.percentComplete);
   const cfg = STATUS_CONFIG[status];

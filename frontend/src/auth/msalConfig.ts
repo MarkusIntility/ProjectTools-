@@ -13,7 +13,6 @@ const config: Configuration = {
   },
   cache: {
     cacheLocation: "sessionStorage",
-    storeAuthStateInCookie: false,
   },
 };
 
