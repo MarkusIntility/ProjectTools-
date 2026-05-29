@@ -21,6 +21,15 @@ const SOURCE_CONFIG = {
   own:        { label: "Egen",              color: "#7950F2", initial: "E" },
 };
 
+type Tab = "dashboard" | "aktiviteter" | "pcer" | "lokasjoner" | "applikasjoner";
+const TABS: { id: Tab; label: string }[] = [
+  { id: "dashboard",     label: "Dashboard" },
+  { id: "aktiviteter",   label: "Aktiviteter" },
+  { id: "pcer",          label: "PCer" },
+  { id: "lokasjoner",    label: "Lokasjoner" },
+  { id: "applikasjoner", label: "Applikasjoner" },
+];
+
 // ─── Empty activity form ──────────────────────────────────────────────────────
 
 const EMPTY_FORM = {
@@ -39,6 +48,7 @@ export default function RunbookPage() {
   const { projectId, runbookId } = useParams<{ projectId: string; runbookId: string }>();
   const navigate = useNavigate();
   const [runbook, setRunbook] = useState<Runbook | null>(null);
+  const [activeTab, setActiveTab] = useState<Tab>("dashboard");
 
   // Planner state — MSAL is initialized in main.tsx before React renders
   const [msalReady] = useState(isMsalConfigured);
@@ -98,11 +108,9 @@ export default function RunbookPage() {
 
   async function loginPlanner() {
     if (!isMsalConfigured || !msalReady) return;
-    // Clear stale interaction flags from any previous failed attempts
     Object.keys(sessionStorage)
       .filter((k) => k.includes("interaction"))
       .forEach((k) => sessionStorage.removeItem(k));
-    // Store return URL — main.tsx reads this after auth and navigates back here
     sessionStorage.setItem("app.returnUrl", window.location.href);
     await msalInstance.loginRedirect({ scopes: PLANNER_SCOPES });
   }
@@ -199,6 +207,8 @@ export default function RunbookPage() {
   const inProgress = runbook.activities.filter((a) => a.status === "in_progress").length;
   const total = runbook.activities.length;
 
+  const activityCount = runbook.source === "own" ? total : (plannerData?.tasks.length ?? 0);
+
   return (
     <div style={{ maxWidth: 960, margin: "0 auto", padding: "2rem" }}>
       {/* Back */}
@@ -210,7 +220,7 @@ export default function RunbookPage() {
       </button>
 
       {/* Header */}
-      <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", marginBottom: "2rem", gap: "1rem" }}>
+      <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", marginBottom: "1.5rem", gap: "1rem" }}>
         <div style={{ display: "flex", alignItems: "center", gap: "1rem" }}>
           <div style={{
             width: 48, height: 48, borderRadius: 10, background: srcCfg.color,
@@ -224,90 +234,148 @@ export default function RunbookPage() {
             <span style={{ fontSize: "0.8rem", color: srcCfg.color, fontWeight: 600 }}>{srcCfg.label}</span>
           </div>
         </div>
-        <div style={{ display: "flex", gap: "0.5rem", flexShrink: 0 }}>
-          <Button variant="outline" onClick={() => { setRunbookTitle(runbook.title); setRunbookUrl(runbook.external_url ?? ""); setEditRunbookModal(true); }}>
-            Rediger
-          </Button>
-          {runbook.source === "own" && (
-            <Button variant="filled" onClick={() => openAdd()}>+ Legg til aktivitet</Button>
-          )}
-        </div>
+        <Button variant="outline" onClick={() => { setRunbookTitle(runbook.title); setRunbookUrl(runbook.external_url ?? ""); setEditRunbookModal(true); }}>
+          Rediger
+        </Button>
       </div>
 
-      {/* Planner integration view */}
-      {runbook.source === "planner" && (
-        <PlannerView
+      {/* Tab bar */}
+      <div style={{ display: "flex", borderBottom: "2px solid var(--bfc-base-dimmed)", marginBottom: "1.75rem" }}>
+        {TABS.map(({ id, label }) => {
+          const isActive = activeTab === id;
+          const count = id === "aktiviteter" ? activityCount : 0;
+          return (
+            <button
+              key={id}
+              onClick={() => setActiveTab(id)}
+              style={{
+                background: "none", border: "none", cursor: "pointer",
+                padding: "0.6rem 1.1rem",
+                fontWeight: isActive ? 600 : 400,
+                color: isActive ? srcCfg.color : "var(--bfc-base-c-2)",
+                borderBottom: isActive ? `2px solid ${srcCfg.color}` : "2px solid transparent",
+                marginBottom: "-2px",
+                fontSize: "0.9rem",
+                transition: "color 0.15s",
+                display: "flex", alignItems: "center", gap: "0.4rem",
+              }}
+            >
+              {label}
+              {count > 0 && (
+                <span style={{
+                  fontSize: "0.7rem", fontWeight: 600,
+                  padding: "1px 6px", borderRadius: 20,
+                  background: isActive ? `${srcCfg.color}18` : "var(--bfc-base-dimmed)",
+                  color: isActive ? srcCfg.color : "var(--bfc-base-c-2)",
+                }}>
+                  {count}
+                </span>
+              )}
+            </button>
+          );
+        })}
+      </div>
+
+      {/* Dashboard */}
+      {activeTab === "dashboard" && (
+        <DashboardTab
           runbook={runbook}
-          srcCfg={srcCfg}
-          isMsalConfigured={isMsalConfigured}
-          msalReady={msalReady}
-          account={plannerAccount}
-          data={plannerData}
-          loading={plannerLoading}
-          error={plannerError}
-          onLogin={loginPlanner}
-          onRefresh={refreshPlanner}
+          plannerData={plannerData}
+          plannerLoading={plannerLoading}
+          srcColor={srcCfg.color}
+          onGoToActiviteter={() => setActiveTab("aktiviteter")}
         />
       )}
 
-      {/* Smartsheet — link only for now */}
-      {runbook.source === "smartsheet" && (
-        <ExternalLinkCard runbook={runbook} srcCfg={srcCfg} />
-      )}
-
-      {/* Own runbook: stats + activities */}
-      {runbook.source === "own" && (
+      {/* Aktiviteter */}
+      {activeTab === "aktiviteter" && (
         <>
-          {/* Stats */}
-          {total > 0 && (
-            <div style={{ display: "flex", gap: "1rem", marginBottom: "1.75rem", flexWrap: "wrap" }}>
-              {[
-                { label: "Totalt", value: total, color: "#868E96" },
-                { label: "Ferdig", value: done, color: "#2F9E44" },
-                { label: "Pågående", value: inProgress, color: "#1971C2" },
-                { label: "Gjenstår", value: total - done - inProgress, color: "#F76707" },
-              ].map(({ label, value, color }) => (
-                <div key={label} style={{
-                  padding: "0.6rem 1.1rem", borderRadius: 8,
-                  background: `${color}12`, border: `1px solid ${color}30`,
-                  textAlign: "center", minWidth: 80,
-                }}>
-                  <div style={{ fontSize: "1.4rem", fontWeight: 700, color }}>{value}</div>
-                  <div style={{ fontSize: "0.75rem", color: "var(--bfc-base-c-2)" }}>{label}</div>
-                </div>
-              ))}
-            </div>
+          {runbook.source === "planner" && (
+            <PlannerView
+              runbook={runbook}
+              srcCfg={srcCfg}
+              isMsalConfigured={isMsalConfigured}
+              msalReady={msalReady}
+              account={plannerAccount}
+              data={plannerData}
+              loading={plannerLoading}
+              error={plannerError}
+              onLogin={loginPlanner}
+              onRefresh={refreshPlanner}
+            />
           )}
 
-          {/* Activities grouped by phase */}
-          {total === 0 ? (
-            <div style={{
-              textAlign: "center", padding: "3rem",
-              border: "2px dashed var(--bfc-base-dimmed)", borderRadius: 8,
-              color: "var(--bfc-base-c-2)",
-            }}>
-              <p style={{ marginBottom: "1rem" }}>Ingen aktiviteter ennå.</p>
-              <Button variant="filled" onClick={() => openAdd()}>+ Legg til første aktivitet</Button>
-            </div>
-          ) : (
-            <div style={{ display: "grid", gap: "1.5rem" }}>
-              {orderedPhases.map((phase) => {
-                const acts = runbook.activities.filter((a) => (a.phase ?? "") === phase);
-                return (
-                  <PhaseGroup
-                    key={phase || "__none__"}
-                    phase={phase || "Uten fase"}
-                    activities={acts}
-                    onAdd={() => openAdd(phase)}
-                    onEdit={openEdit}
-                    onDelete={setDeleteTarget}
-                    onToggleStatus={toggleStatus}
-                  />
-                );
-              })}
-            </div>
+          {runbook.source === "smartsheet" && (
+            <ExternalLinkCard runbook={runbook} srcCfg={srcCfg} />
+          )}
+
+          {runbook.source === "own" && (
+            <>
+              <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: "1rem" }}>
+                <Button variant="filled" onClick={() => openAdd()}>+ Legg til aktivitet</Button>
+              </div>
+
+              {total > 0 && (
+                <div style={{ display: "flex", gap: "1rem", marginBottom: "1.75rem", flexWrap: "wrap" }}>
+                  {[
+                    { label: "Totalt",    value: total,                     color: "#868E96" },
+                    { label: "Ferdig",    value: done,                      color: "#2F9E44" },
+                    { label: "Pågående",  value: inProgress,                color: "#1971C2" },
+                    { label: "Gjenstår",  value: total - done - inProgress, color: "#F76707" },
+                  ].map(({ label, value, color }) => (
+                    <div key={label} style={{
+                      padding: "0.6rem 1.1rem", borderRadius: 8,
+                      background: `${color}12`, border: `1px solid ${color}30`,
+                      textAlign: "center", minWidth: 80,
+                    }}>
+                      <div style={{ fontSize: "1.4rem", fontWeight: 700, color }}>{value}</div>
+                      <div style={{ fontSize: "0.75rem", color: "var(--bfc-base-c-2)" }}>{label}</div>
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              {total === 0 ? (
+                <div style={{
+                  textAlign: "center", padding: "3rem",
+                  border: "2px dashed var(--bfc-base-dimmed)", borderRadius: 8,
+                  color: "var(--bfc-base-c-2)",
+                }}>
+                  <p style={{ marginBottom: "1rem" }}>Ingen aktiviteter ennå.</p>
+                  <Button variant="filled" onClick={() => openAdd()}>+ Legg til første aktivitet</Button>
+                </div>
+              ) : (
+                <div style={{ display: "grid", gap: "1.5rem" }}>
+                  {orderedPhases.map((phase) => {
+                    const acts = runbook.activities.filter((a) => (a.phase ?? "") === phase);
+                    return (
+                      <PhaseGroup
+                        key={phase || "__none__"}
+                        phase={phase || "Uten fase"}
+                        activities={acts}
+                        onAdd={() => openAdd(phase)}
+                        onEdit={openEdit}
+                        onDelete={setDeleteTarget}
+                        onToggleStatus={toggleStatus}
+                      />
+                    );
+                  })}
+                </div>
+              )}
+            </>
           )}
         </>
+      )}
+
+      {/* Placeholder tabs */}
+      {activeTab === "pcer" && (
+        <PlaceholderTab label="PCer" icon="💻" color="#1971C2" description="Her vil en liste over alle PCer i prosjektet vises — inkl. serienummer, bruker og status." />
+      )}
+      {activeTab === "lokasjoner" && (
+        <PlaceholderTab label="Lokasjoner" icon="📍" color="#F76707" description="Her vil en liste over alle lokasjoner i prosjektet vises — inkl. adresse og antall enheter." />
+      )}
+      {activeTab === "applikasjoner" && (
+        <PlaceholderTab label="Applikasjoner" icon="📦" color="#7950F2" description="Her vil en liste over alle applikasjoner i prosjektet vises — inkl. versjon og status." />
       )}
 
       {/* Activity form modal */}
@@ -362,6 +430,215 @@ export default function RunbookPage() {
   );
 }
 
+// ─── Dashboard tab ────────────────────────────────────────────────────────────
+
+function DashboardTab({ runbook, plannerData, plannerLoading, srcColor, onGoToActiviteter }: {
+  runbook: Runbook;
+  plannerData: PlannerData | null;
+  plannerLoading: boolean;
+  srcColor: string;
+  onGoToActiviteter: () => void;
+}) {
+  let actTotal = 0, actDone = 0, actInProgress = 0;
+  let phases: { name: string; done: number; total: number }[] = [];
+
+  if (runbook.source === "own") {
+    const acts = runbook.activities;
+    actTotal = acts.length;
+    actDone = acts.filter((a) => a.status === "done").length;
+    actInProgress = acts.filter((a) => a.status === "in_progress").length;
+
+    const phaseMap: Record<string, { done: number; total: number }> = {};
+    for (const a of acts) {
+      const p = a.phase ?? "Uten fase";
+      if (!phaseMap[p]) phaseMap[p] = { done: 0, total: 0 };
+      phaseMap[p].total++;
+      if (a.status === "done") phaseMap[p].done++;
+    }
+    phases = Object.entries(phaseMap).map(([name, s]) => ({ name, ...s }));
+  } else if (plannerData) {
+    actTotal = plannerData.tasks.length;
+    actDone = plannerData.tasks.filter((t) => t.percentComplete === 100).length;
+    actInProgress = plannerData.tasks.filter((t) => t.percentComplete > 0 && t.percentComplete < 100).length;
+
+    const bucketMap = Object.fromEntries(plannerData.buckets.map((b) => [b.id, b.name]));
+    const phaseMap: Record<string, { done: number; total: number }> = {};
+    for (const t of plannerData.tasks) {
+      const p = bucketMap[t.bucketId] ?? "Ukjent";
+      if (!phaseMap[p]) phaseMap[p] = { done: 0, total: 0 };
+      phaseMap[p].total++;
+      if (t.percentComplete === 100) phaseMap[p].done++;
+    }
+    phases = Object.entries(phaseMap).map(([name, s]) => ({ name, ...s }));
+  }
+
+  const overallPct = actTotal > 0 ? Math.round((actDone / actTotal) * 100) : 0;
+  const actRemaining = actTotal - actDone - actInProgress;
+  const noData = actTotal === 0 && !plannerLoading;
+
+  return (
+    <div style={{ display: "grid", gap: "2rem" }}>
+
+      {/* Activity stats */}
+      <div>
+        <h3 className="bf-h4" style={{ margin: "0 0 0.85rem", color: "var(--bfc-base-c-2)", fontWeight: 500, fontSize: "0.8rem", textTransform: "uppercase", letterSpacing: "0.06em" }}>Aktiviteter</h3>
+
+        {noData ? (
+          <div style={{
+            padding: "2rem", borderRadius: 10,
+            border: "1px dashed var(--bfc-base-dimmed)",
+            color: "var(--bfc-base-c-2)", fontSize: "0.875rem", textAlign: "center",
+          }}>
+            {runbook.source === "own" ? (
+              <>
+                Ingen aktiviteter ennå.{" "}
+                <button
+                  onClick={onGoToActiviteter}
+                  style={{ background: "none", border: "none", color: srcColor, cursor: "pointer", fontWeight: 600, padding: 0, fontSize: "inherit" }}
+                >
+                  Gå til Aktiviteter →
+                </button>
+              </>
+            ) : (
+              <>Logg inn i Aktiviteter-fanen for å se data fra Planner.</>
+            )}
+          </div>
+        ) : (
+          <>
+            {/* Stat cards */}
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: "0.75rem", marginBottom: "1rem" }}>
+              {[
+                { label: "Totalt",    value: actTotal,      color: "#868E96", sub: "aktiviteter" },
+                { label: "Ferdig",    value: actDone,       color: "#2F9E44", sub: `${overallPct}% fullført` },
+                { label: "Pågående",  value: actInProgress, color: "#1971C2", sub: "aktive nå" },
+                { label: "Gjenstår",  value: actRemaining,  color: "#F76707", sub: "ikke startet" },
+              ].map(({ label, value, color, sub }) => (
+                <div
+                  key={label}
+                  onClick={onGoToActiviteter}
+                  style={{
+                    padding: "1rem 1.25rem", borderRadius: 10,
+                    background: `${color}10`, border: `1px solid ${color}28`,
+                    cursor: "pointer", transition: "box-shadow 0.15s",
+                  }}
+                  onMouseEnter={(e) => (e.currentTarget.style.boxShadow = `0 2px 12px ${color}28`)}
+                  onMouseLeave={(e) => (e.currentTarget.style.boxShadow = "none")}
+                >
+                  <div style={{ fontSize: "2rem", fontWeight: 700, color, lineHeight: 1 }}>{value}</div>
+                  <div style={{ fontSize: "0.85rem", fontWeight: 600, color, marginTop: "0.25rem" }}>{label}</div>
+                  <div style={{ fontSize: "0.72rem", color: "var(--bfc-base-c-3)", marginTop: "0.15rem" }}>{sub}</div>
+                </div>
+              ))}
+            </div>
+
+            {/* Overall progress bar */}
+            <div style={{
+              padding: "0.85rem 1.1rem", borderRadius: 8,
+              background: "var(--bfc-base-3)", border: "1px solid var(--bfc-base-dimmed)",
+            }}>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "0.5rem" }}>
+                <span style={{ fontSize: "0.85rem", fontWeight: 500 }}>Samlet fremdrift</span>
+                <span style={{ fontSize: "0.9rem", fontWeight: 700, color: overallPct === 100 ? "#2F9E44" : "#1971C2" }}>
+                  {overallPct}%
+                </span>
+              </div>
+              <div style={{ height: 10, borderRadius: 5, background: "var(--bfc-base-dimmed)", overflow: "hidden" }}>
+                <div style={{
+                  width: `${overallPct}%`, height: "100%",
+                  background: overallPct === 100 ? "#2F9E44" : "#1971C2",
+                  borderRadius: 5, transition: "width 0.5s",
+                }} />
+              </div>
+            </div>
+          </>
+        )}
+
+        {plannerLoading && (
+          <div style={{ color: "var(--bfc-base-c-2)", fontSize: "0.85rem", marginTop: "0.75rem" }}>
+            Henter data fra Planner...
+          </div>
+        )}
+      </div>
+
+      {/* Phase breakdown */}
+      {phases.length > 0 && (
+        <div>
+          <h3 className="bf-h4" style={{ margin: "0 0 0.85rem", color: "var(--bfc-base-c-2)", fontWeight: 500, fontSize: "0.8rem", textTransform: "uppercase", letterSpacing: "0.06em" }}>Fremdrift per fase</h3>
+          <div style={{ display: "grid", gap: "0.5rem" }}>
+            {phases.map(({ name, done: pDone, total: phTotal }) => {
+              const pct = phTotal > 0 ? Math.round((pDone / phTotal) * 100) : 0;
+              const barColor = pct === 100 ? "#2F9E44" : "#1971C2";
+              return (
+                <div key={name} style={{
+                  padding: "0.75rem 1.1rem", borderRadius: 8,
+                  background: "var(--bfc-base-3)", border: "1px solid var(--bfc-base-dimmed)",
+                }}>
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "0.4rem" }}>
+                    <span style={{ fontSize: "0.875rem", fontWeight: 500 }}>{name}</span>
+                    <div style={{ display: "flex", alignItems: "center", gap: "0.75rem" }}>
+                      <span style={{ fontSize: "0.75rem", color: "var(--bfc-base-c-3)" }}>{pDone}/{phTotal} ferdig</span>
+                      <span style={{ fontSize: "0.75rem", fontWeight: 700, color: barColor, minWidth: 32, textAlign: "right" }}>{pct}%</span>
+                    </div>
+                  </div>
+                  <div style={{ height: 6, borderRadius: 3, background: "var(--bfc-base-dimmed)", overflow: "hidden" }}>
+                    <div style={{ width: `${pct}%`, height: "100%", background: barColor, borderRadius: 3, transition: "width 0.4s" }} />
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
+      {/* Summary tiles for future tabs */}
+      <div>
+        <h3 className="bf-h4" style={{ margin: "0 0 0.85rem", color: "var(--bfc-base-c-2)", fontWeight: 500, fontSize: "0.8rem", textTransform: "uppercase", letterSpacing: "0.06em" }}>Oversikt</h3>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: "0.75rem" }}>
+          {[
+            { label: "PCer",          icon: "💻", color: "#1971C2", count: 0 },
+            { label: "Lokasjoner",    icon: "📍", color: "#F76707", count: 0 },
+            { label: "Applikasjoner", icon: "📦", color: "#7950F2", count: 0 },
+          ].map(({ label, icon, color, count }) => (
+            <div key={label} style={{
+              padding: "1.5rem 1rem", borderRadius: 10,
+              background: `${color}08`, border: `1px solid ${color}20`,
+              textAlign: "center",
+            }}>
+              <div style={{ fontSize: "2rem", marginBottom: "0.5rem" }}>{icon}</div>
+              <div style={{ fontSize: "1.75rem", fontWeight: 700, color }}>{count}</div>
+              <div style={{ fontSize: "0.85rem", fontWeight: 500, color, marginTop: "0.2rem" }}>{label}</div>
+              <div style={{ fontSize: "0.72rem", color: "var(--bfc-base-c-3)", marginTop: "0.3rem" }}>Kommer snart</div>
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─── Placeholder tab ──────────────────────────────────────────────────────────
+
+function PlaceholderTab({ label, icon, color, description }: {
+  label: string;
+  icon: string;
+  color: string;
+  description: string;
+}) {
+  return (
+    <div style={{
+      textAlign: "center", padding: "4rem 2rem",
+      border: `2px dashed ${color}40`, borderRadius: 12,
+      background: `${color}05`,
+    }}>
+      <div style={{ fontSize: "3.5rem", marginBottom: "1rem" }}>{icon}</div>
+      <h3 className="bf-h3" style={{ margin: "0 0 0.5rem", color }}>{label}</h3>
+      <p style={{ fontSize: "0.9rem", color: "var(--bfc-base-c-2)", maxWidth: 400, margin: "0 auto" }}>
+        {description}
+      </p>
+    </div>
+  );
+}
+
 // ─── Phase group ──────────────────────────────────────────────────────────────
 
 function PhaseGroup({
@@ -379,13 +656,11 @@ function PhaseGroup({
 
   return (
     <div>
-      {/* Phase header */}
       <div style={{ display: "flex", alignItems: "center", gap: "0.75rem", marginBottom: "0.5rem" }}>
         <h3 className="bf-h4" style={{ margin: 0, flex: 1 }}>{phase}</h3>
         <span style={{ fontSize: "0.75rem", color: "var(--bfc-base-c-3)" }}>
           {done}/{activities.length} ferdig
         </span>
-        {/* Progress bar */}
         <div style={{ width: 80, height: 6, borderRadius: 3, background: "var(--bfc-base-dimmed)", overflow: "hidden" }}>
           <div style={{ width: `${pct}%`, height: "100%", background: "#2F9E44", borderRadius: 3, transition: "width 0.3s" }} />
         </div>
@@ -400,7 +675,6 @@ function PhaseGroup({
         </button>
       </div>
 
-      {/* Activity rows */}
       <div style={{ display: "grid", gap: "0.35rem" }}>
         {activities.map((activity) => (
           <ActivityRow
@@ -446,7 +720,6 @@ function ActivityRow({
         transition: "box-shadow 0.15s",
       }}
     >
-      {/* Status toggle */}
       <button
         onClick={onToggle}
         title={isDone ? "Merk som ikke startet" : "Merk som ferdig"}
@@ -462,31 +735,24 @@ function ActivityRow({
         {isDone && <span style={{ color: "#fff", fontSize: "0.7rem", fontWeight: 700 }}>✓</span>}
       </button>
 
-      {/* Name */}
-      <span
-        style={{
-          flex: 1, minWidth: 0,
-          fontSize: "0.9rem",
-          textDecoration: isDone || isCancelled ? "line-through" : "none",
-          color: isDone || isCancelled ? "var(--bfc-base-c-3)" : "inherit",
-          overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
-        }}
-      >
+      <span style={{
+        flex: 1, minWidth: 0, fontSize: "0.9rem",
+        textDecoration: isDone || isCancelled ? "line-through" : "none",
+        color: isDone || isCancelled ? "var(--bfc-base-c-3)" : "inherit",
+        overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
+      }}>
         {activity.name}
       </span>
 
-      {/* Responsible */}
       {activity.responsible && (
         <span style={{
           fontSize: "0.75rem", padding: "2px 8px", borderRadius: 20,
-          background: "var(--bfc-base-dimmed)", color: "var(--bfc-base-c-2)",
-          flexShrink: 0,
+          background: "var(--bfc-base-dimmed)", color: "var(--bfc-base-c-2)", flexShrink: 0,
         }}>
           {activity.responsible}
         </span>
       )}
 
-      {/* Date range */}
       {(activity.start_date || activity.end_date) && (
         <span style={{ fontSize: "0.75rem", color: "var(--bfc-base-c-3)", flexShrink: 0, whiteSpace: "nowrap" }}>
           {activity.start_date && new Date(activity.start_date).toLocaleDateString("nb-NO", { day: "numeric", month: "short" })}
@@ -495,7 +761,6 @@ function ActivityRow({
         </span>
       )}
 
-      {/* Status badge */}
       <span style={{
         fontSize: "0.72rem", fontWeight: 600, padding: "2px 8px", borderRadius: 20,
         background: cfg.bg, color: cfg.color, flexShrink: 0,
@@ -503,7 +768,6 @@ function ActivityRow({
         {cfg.label}
       </span>
 
-      {/* Actions */}
       <div
         style={{ display: "flex", gap: "0.25rem", flexShrink: 0, opacity: hovered ? 1 : 0, transition: "opacity 0.15s" }}
         onClick={(e) => e.stopPropagation()}
@@ -678,7 +942,6 @@ function PlannerView({
 
   return (
     <div>
-      {/* Toolbar */}
       <div style={{ display: "flex", alignItems: "center", gap: "0.75rem", marginBottom: "1.25rem", flexWrap: "wrap" }}>
         {account ? (
           <>
@@ -752,13 +1015,12 @@ function PlannerTaskList({ data }: { data: PlannerData }) {
 
   return (
     <div>
-      {/* Stats */}
       <div style={{ display: "flex", gap: "1rem", marginBottom: "1.75rem", flexWrap: "wrap" }}>
         {[
-          { label: "Totalt",    value: total,               color: "#868E96" },
-          { label: "Ferdig",    value: done,                color: "#2F9E44" },
-          { label: "Pågående",  value: inProgress,          color: "#1971C2" },
-          { label: "Gjenstår",  value: total - done - inProgress, color: "#F76707" },
+          { label: "Totalt",   value: total,               color: "#868E96" },
+          { label: "Ferdig",   value: done,                color: "#2F9E44" },
+          { label: "Pågående", value: inProgress,          color: "#1971C2" },
+          { label: "Gjenstår", value: total - done - inProgress, color: "#F76707" },
         ].map(({ label, value, color }) => (
           <div key={label} style={{ padding: "0.6rem 1.1rem", borderRadius: 8, background: `${color}12`, border: `1px solid ${color}30`, textAlign: "center", minWidth: 80 }}>
             <div style={{ fontSize: "1.4rem", fontWeight: 700, color }}>{value}</div>
@@ -767,7 +1029,6 @@ function PlannerTaskList({ data }: { data: PlannerData }) {
         ))}
       </div>
 
-      {/* Buckets */}
       <div style={{ display: "grid", gap: "1.5rem" }}>
         {Object.entries(grouped).map(([bucket, tasks]) => {
           const bucketDone = tasks.filter((t) => t.percentComplete === 100).length;
@@ -810,7 +1071,6 @@ function PlannerTaskRow({ task }: { task: PlannerTask }) {
         transition: "box-shadow 0.15s",
       }}
     >
-      {/* Status circle (read-only) */}
       <div style={{
         width: 22, height: 22, borderRadius: "50%", flexShrink: 0,
         border: `2px solid ${cfg.color}`,
@@ -829,14 +1089,12 @@ function PlannerTaskRow({ task }: { task: PlannerTask }) {
         {task.title}
       </span>
 
-      {/* Progress bar for partially done */}
       {task.percentComplete > 0 && task.percentComplete < 100 && (
         <div style={{ width: 60, height: 5, borderRadius: 3, background: "var(--bfc-base-dimmed)", overflow: "hidden", flexShrink: 0 }}>
           <div style={{ width: `${task.percentComplete}%`, height: "100%", background: cfg.color, borderRadius: 3 }} />
         </div>
       )}
 
-      {/* Dates */}
       {(task.startDateTime || task.dueDateTime) && (
         <span style={{ fontSize: "0.75rem", color: "var(--bfc-base-c-3)", flexShrink: 0, whiteSpace: "nowrap" }}>
           {task.startDateTime && new Date(task.startDateTime).toLocaleDateString("nb-NO", { day: "numeric", month: "short" })}
