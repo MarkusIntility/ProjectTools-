@@ -706,8 +706,24 @@ function PlannerView({
       </div>
 
       {error && (
-        <div style={{ padding: "0.75rem 1rem", borderRadius: 6, background: "#FFE3E3", color: "#C92A2A", marginBottom: "1rem", fontSize: "0.9rem" }}>
-          {error}
+        <div style={{ padding: "1rem 1.25rem", borderRadius: 8, background: error.startsWith("PREMIUM_PLAN") ? "#FFF3BF" : "#FFE3E3", border: `1px solid ${error.startsWith("PREMIUM_PLAN") ? "#FAB005" : "#FFA8A8"}`, marginBottom: "1rem" }}>
+          {error.startsWith("PREMIUM_PLAN") ? (
+            <>
+              <div style={{ fontWeight: 600, color: "#5C3A00", marginBottom: "0.4rem" }}>Planner Premium støttes ikke via API</div>
+              <p style={{ margin: "0 0 0.75rem", fontSize: "0.875rem", color: "#7C4D00" }}>
+                Planer fra <strong>planner.cloud.microsoft/premiumplan/</strong> er lagret i Microsoft Dataverse og er ikke tilgjengelige via standard Graph Planner API.
+                For å se aktivitetene, åpne planen direkte i Planner.
+              </p>
+              {runbook.external_url && (
+                <a href={runbook.external_url} target="_blank" rel="noopener noreferrer"
+                  style={{ display: "inline-block", padding: "0.45rem 1.1rem", background: "#0078D4", color: "#fff", borderRadius: 5, fontWeight: 600, textDecoration: "none", fontSize: "0.875rem" }}>
+                  Åpne plan i Planner →
+                </a>
+              )}
+            </>
+          ) : (
+            <span style={{ color: "#C92A2A", fontSize: "0.9rem" }}>{error}</span>
+          )}
         </div>
       )}
 

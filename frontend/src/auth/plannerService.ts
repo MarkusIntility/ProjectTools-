@@ -52,6 +52,25 @@ export async function fetchPlannerData(
   }
 
   const token = tokenResponse.accessToken;
+
+  // Verify plan exists before fetching tasks (catches Premium plan 404 early)
+  const planCheck = await fetch(`https://graph.microsoft.com/v1.0/planner/plans/${planId}`, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+
+  if (!planCheck.ok) {
+    if (planCheck.status === 404) {
+      throw new Error(
+        "PREMIUM_PLAN: Planen ble ikke funnet via standard Planner API. " +
+        "Planner Premium-planer (planner.cloud.microsoft/premiumplan/) er " +
+        "lagret i Dataverse og støttes ikke av Graph API /planner/plans/. " +
+        "Bruk «Åpne i Planner»-lenken for å se planen direkte, eller opprett " +
+        "en Basic Planner-plan for API-integrasjon."
+      );
+    }
+    throw new Error(`Graph API feil (${planCheck.status}): ${await planCheck.text()}`);
+  }
+
   const [bucketsData, tasksData] = await Promise.all([
     graphRequest<{ value: PlannerBucket[] }>(token, `/planner/plans/${planId}/buckets`),
     graphRequest<{ value: PlannerTask[] }>(token, `/planner/plans/${planId}/tasks`),
