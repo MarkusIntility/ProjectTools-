@@ -77,11 +77,11 @@ export default function RunbookPage() {
     if (accounts.length > 0) setPlannerAccount(accounts[0]);
   }, []);
 
-  const loadPlannerData = useCallback(async (account: AccountInfo, planId: string) => {
+  const loadPlannerData = useCallback(async (account: AccountInfo, planUrl: string) => {
     setPlannerLoading(true);
     setPlannerError(null);
     try {
-      const data = await fetchPlannerData(msalInstance, account, planId);
+      const data = await fetchPlannerData(msalInstance, account, planUrl);
       setPlannerData(data);
     } catch (err) {
       setPlannerError(err instanceof Error ? err.message : "Ukjent feil");
@@ -93,8 +93,7 @@ export default function RunbookPage() {
   // Auto-fetch when account + runbook ready
   useEffect(() => {
     if (!plannerAccount || !runbook || runbook.source !== "planner" || !runbook.external_url) return;
-    const planId = parsePlanId(runbook.external_url);
-    if (planId) loadPlannerData(plannerAccount, planId);
+    loadPlannerData(plannerAccount, runbook.external_url);
   }, [plannerAccount, runbook, loadPlannerData]);
 
   async function loginPlanner() {
@@ -110,8 +109,7 @@ export default function RunbookPage() {
 
   function refreshPlanner() {
     if (!plannerAccount || !runbook?.external_url) return;
-    const planId = parsePlanId(runbook.external_url);
-    if (planId) loadPlannerData(plannerAccount, planId);
+    loadPlannerData(plannerAccount, runbook.external_url);
   }
 
   function openAdd(defaultPhase?: string) {
