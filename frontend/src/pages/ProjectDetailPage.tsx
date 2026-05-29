@@ -232,6 +232,18 @@ export default function ProjectDetailPage() {
 
       {/* Sections */}
       <Section
+        type="projectplan"
+        items={projectPlans}
+        onNew={() => { setPpSource(null); setPpTitle(""); setPpUrl(""); setNewPlanModal(true); }}
+        onOpen={(id) => navigate(`/projects/${projectId}/project-plan/${id}`)}
+        onRename={(item) => { setRenameTarget({ ...item, type: "projectplan" }); setRenameValue(item.title); }}
+        onDelete={(item) => setDeleteTarget({ ...item, type: "projectplan" })}
+        countLabel={(pp) => {
+          const src = (pp as ProjectPlan).source;
+          return src === "planner" ? "Planner" : src === "smartsheet" ? "Smartsheet" : `${(pp as ProjectPlan).tasks.length} oppgaver`;
+        }}
+      />
+      <Section
         type="risk"
         items={riskMatrices}
         onNew={() => createAndNavigate("risk")}
@@ -257,19 +269,6 @@ export default function ProjectDetailPage() {
         onRename={(item) => { setRenameTarget({ ...item, type: "meeting" }); setRenameValue(item.title); }}
         onDelete={(item) => setDeleteTarget({ ...item, type: "meeting" })}
         countLabel={(p) => `${(p as MeetingPlan).meetings.length} møter`}
-      />
-
-      <Section
-        type="projectplan"
-        items={projectPlans}
-        onNew={() => { setPpSource(null); setPpTitle(""); setPpUrl(""); setNewPlanModal(true); }}
-        onOpen={(id) => navigate(`/projects/${projectId}/project-plan/${id}`)}
-        onRename={(item) => { setRenameTarget({ ...item, type: "projectplan" }); setRenameValue(item.title); }}
-        onDelete={(item) => setDeleteTarget({ ...item, type: "projectplan" })}
-        countLabel={(pp) => {
-          const src = (pp as ProjectPlan).source;
-          return src === "planner" ? "Planner" : src === "smartsheet" ? "Smartsheet" : `${(pp as ProjectPlan).tasks.length} oppgaver`;
-        }}
       />
 
       <Section
