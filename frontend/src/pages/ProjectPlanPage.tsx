@@ -768,10 +768,16 @@ function PlannerTaskGrid({ data }: { data: PlannerData }) {
   // All tasks grouped by bucket (unfiltered, for counts/progress)
   const allGrouped: Record<string, PlannerTask[]> = {};
   for (const task of data.tasks) {
-    const bucket = bucketMap[task.bucketId] ?? "Ukjent fase";
+    const bucket = bucketMap[task.bucketId] ?? "Ukjent";
     if (!allGrouped[bucket]) allGrouped[bucket] = [];
     allGrouped[bucket].push(task);
   }
+
+  // Ordered bucket names: follow API bucket order, then any orphaned groups last
+  const orderedBucketNames = [
+    ...data.buckets.map((b) => b.name).filter((n) => allGrouped[n]),
+    ...Object.keys(allGrouped).filter((n) => !data.buckets.find((b) => b.name === n)),
+  ];
 
   const total = data.tasks.length;
   const done = data.tasks.filter((t) => t.percentComplete === 100).length;
@@ -840,8 +846,9 @@ function PlannerTaskGrid({ data }: { data: PlannerData }) {
 
       {/* Buckets */}
       <div style={{ display: "grid", gap: "1.5rem" }}>
-        {Object.entries(allGrouped).map(([bucket, allTasks]) => {
-          const tasks = visibleTasks.filter((t) => (bucketMap[t.bucketId] ?? "Ukjent fase") === bucket);
+        {orderedBucketNames.map((bucket) => {
+          const allTasks = allGrouped[bucket] ?? [];
+          const tasks = visibleTasks.filter((t) => (bucketMap[t.bucketId] ?? "Ukjent") === bucket);
           if (tasks.length === 0 && filter !== "all") return null;
           const avg = allTasks.length > 0 ? Math.round(allTasks.reduce((s, t) => s + t.percentComplete, 0) / allTasks.length) : 0;
           const bucketDone = allTasks.filter((t) => t.percentComplete === 100).length;
