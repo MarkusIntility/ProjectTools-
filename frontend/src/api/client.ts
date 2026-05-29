@@ -78,6 +78,29 @@ export interface MeetingPlan {
   meetings: Meeting[];
 }
 
+export interface RunbookActivity {
+  id: string;
+  runbook_id: string;
+  name: string;
+  phase: string | null;
+  status: "not_started" | "in_progress" | "done" | "cancelled";
+  start_date: string | null;
+  end_date: string | null;
+  responsible: string | null;
+  description: string | null;
+  sort_order: number;
+}
+
+export interface Runbook {
+  id: string;
+  project_id: string;
+  title: string;
+  source: "own" | "planner" | "smartsheet";
+  external_url: string | null;
+  created_at: string;
+  activities: RunbookActivity[];
+}
+
 export const api = {
   projects: {
     list: () => request<Project[]>("/projects/"),
@@ -135,5 +158,21 @@ export const api = {
       request<Meeting>(`/projects/${projectId}/meeting-plans/${planId}/meetings/${meetingId}`, { method: "PUT", body: JSON.stringify(data) }),
     deleteMeeting: (projectId: string, planId: string, meetingId: string) =>
       request<void>(`/projects/${projectId}/meeting-plans/${planId}/meetings/${meetingId}`, { method: "DELETE" }),
+  },
+  runbooks: {
+    list: (projectId: string) => request<Runbook[]>(`/projects/${projectId}/runbooks/`),
+    get: (projectId: string, runbookId: string) => request<Runbook>(`/projects/${projectId}/runbooks/${runbookId}`),
+    create: (projectId: string, data: { title: string; source: string; external_url?: string }) =>
+      request<Runbook>(`/projects/${projectId}/runbooks/`, { method: "POST", body: JSON.stringify(data) }),
+    update: (projectId: string, runbookId: string, data: { title: string; external_url?: string | null }) =>
+      request<Runbook>(`/projects/${projectId}/runbooks/${runbookId}`, { method: "PUT", body: JSON.stringify(data) }),
+    delete: (projectId: string, runbookId: string) =>
+      request<void>(`/projects/${projectId}/runbooks/${runbookId}`, { method: "DELETE" }),
+    addActivity: (projectId: string, runbookId: string, data: Omit<RunbookActivity, "id" | "runbook_id" | "sort_order">) =>
+      request<RunbookActivity>(`/projects/${projectId}/runbooks/${runbookId}/activities`, { method: "POST", body: JSON.stringify(data) }),
+    updateActivity: (projectId: string, runbookId: string, activityId: string, data: Omit<RunbookActivity, "id" | "runbook_id">) =>
+      request<RunbookActivity>(`/projects/${projectId}/runbooks/${runbookId}/activities/${activityId}`, { method: "PUT", body: JSON.stringify(data) }),
+    deleteActivity: (projectId: string, runbookId: string, activityId: string) =>
+      request<void>(`/projects/${projectId}/runbooks/${runbookId}/activities/${activityId}`, { method: "DELETE" }),
   },
 };

@@ -22,6 +22,7 @@ class Project(Base):
     risk_matrices: Mapped[list["RiskMatrix"]] = relationship(back_populates="project", cascade="all, delete-orphan")
     communication_plans: Mapped[list["CommunicationPlan"]] = relationship(back_populates="project", cascade="all, delete-orphan")
     meeting_plans: Mapped[list["MeetingPlan"]] = relationship(back_populates="project", cascade="all, delete-orphan")
+    runbooks: Mapped[list["Runbook"]] = relationship(back_populates="project", cascade="all, delete-orphan")
 
 
 class RiskMatrix(Base):
@@ -112,3 +113,49 @@ class Meeting(Base):
     minutes: Mapped[str | None] = mapped_column(Text)
 
     plan: Mapped["MeetingPlan"] = relationship(back_populates="meetings")
+
+
+class RunbookSource(str, enum.Enum):
+    own = "own"
+    planner = "planner"
+    smartsheet = "smartsheet"
+
+
+class ActivityStatus(str, enum.Enum):
+    not_started = "not_started"
+    in_progress = "in_progress"
+    done = "done"
+    cancelled = "cancelled"
+
+
+class Runbook(Base):
+    __tablename__ = "runbooks"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_uuid)
+    project_id: Mapped[str] = mapped_column(String(36), ForeignKey("projects.id"))
+    title: Mapped[str] = mapped_column(String(200))
+    source: Mapped[str] = mapped_column(String(20), default="own")
+    external_url: Mapped[str | None] = mapped_column(String(500))
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+    project: Mapped["Project"] = relationship(back_populates="runbooks")
+    activities: Mapped[list["RunbookActivity"]] = relationship(
+        back_populates="runbook", cascade="all, delete-orphan", order_by="RunbookActivity.sort_order"
+    )
+
+
+class RunbookActivity(Base):
+    __tablename__ = "runbook_activities"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_uuid)
+    runbook_id: Mapped[str] = mapped_column(String(36), ForeignKey("runbooks.id"))
+    name: Mapped[str] = mapped_column(String(300))
+    phase: Mapped[str | None] = mapped_column(String(200))
+    status: Mapped[str] = mapped_column(String(20), default="not_started")
+    start_date: Mapped[datetime | None] = mapped_column(DateTime)
+    end_date: Mapped[datetime | None] = mapped_column(DateTime)
+    responsible: Mapped[str | None] = mapped_column(String(200))
+    description: Mapped[str | None] = mapped_column(Text)
+    sort_order: Mapped[int] = mapped_column(Integer, default=0)
+
+    runbook: Mapped["Runbook"] = relationship(back_populates="activities")

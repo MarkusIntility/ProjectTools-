@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { Button, Input, Modal } from "@intility/bifrost-react";
-import { api, type Project, type RiskMatrix, type CommunicationPlan, type MeetingPlan } from "../api/client";
+import { api, type Project, type RiskMatrix, type CommunicationPlan, type MeetingPlan, type Runbook } from "../api/client";
 
 const ACCENT_COLORS = [
   "#4C6EF5", "#7950F2", "#E64980", "#F76707",
@@ -24,9 +24,10 @@ const SECTION_CONFIG = {
   risk:    { color: "#E03131", label: "Risikomatriser" },
   comm:    { color: "#1971C2", label: "Kommunikasjonsplaner" },
   meeting: { color: "#2F9E44", label: "Møteplaner" },
+  runbook: { color: "#7950F2", label: "Runbooks" },
 };
 
-type PlanType = "risk" | "comm" | "meeting";
+type PlanType = "risk" | "comm" | "meeting" | "runbook";
 type PlanItem = { id: string; title: string };
 
 export default function ProjectDetailPage() {
@@ -36,6 +37,14 @@ export default function ProjectDetailPage() {
   const [riskMatrices, setRiskMatrices] = useState<RiskMatrix[]>([]);
   const [commPlans, setCommPlans] = useState<CommunicationPlan[]>([]);
   const [meetingPlans, setMeetingPlans] = useState<MeetingPlan[]>([]);
+  const [runbooks, setRunbooks] = useState<Runbook[]>([]);
+
+  // New runbook modal state
+  const [newRunbookModal, setNewRunbookModal] = useState(false);
+  const [rbSource, setRbSource] = useState<"own" | "planner" | "smartsheet" | null>(null);
+  const [rbTitle, setRbTitle] = useState("");
+  const [rbUrl, setRbUrl] = useState("");
+  const [rbSaving, setRbSaving] = useState(false);
 
   const [renameTarget, setRenameTarget] = useState<{ id: string; title: string; type: PlanType } | null>(null);
   const [renameValue, setRenameValue] = useState("");
@@ -50,11 +59,13 @@ export default function ProjectDetailPage() {
       api.riskMatrices.list(projectId),
       api.communicationPlans.list(projectId),
       api.meetingPlans.list(projectId),
-    ]).then(([p, rm, cp, mp]) => {
+      api.runbooks.list(projectId),
+    ]).then(([p, rm, cp, mp, rb]) => {
       setProject(p);
       setRiskMatrices(rm);
       setCommPlans(cp);
       setMeetingPlans(mp);
+      setRunbooks(rb);
     });
   }, [projectId]);
 
@@ -82,13 +93,40 @@ export default function ProjectDetailPage() {
       } else if (renameTarget.type === "comm") {
         const u = await api.communicationPlans.update(projectId, renameTarget.id, { title: renameValue });
         setCommPlans((prev) => prev.map((p) => (p.id === u.id ? u : p)));
-      } else {
+      } else if (renameTarget.type === "meeting") {
         const u = await api.meetingPlans.update(projectId, renameTarget.id, { title: renameValue });
         setMeetingPlans((prev) => prev.map((p) => (p.id === u.id ? u : p)));
+      } else {
+        const u = await api.runbooks.update(projectId, renameTarget.id, { title: renameValue });
+        setRunbooks((prev) => prev.map((p) => (p.id === u.id ? u : p)));
       }
       setRenameTarget(null);
     } finally {
       setRenameSaving(false);
+    }
+  }
+
+  async function createRunbook() {
+    if (!projectId || !rbSource) return;
+    setRbSaving(true);
+    try {
+      const title = rbTitle.trim() || (rbSource === "own" ? "Ny runbook" : rbSource === "planner" ? "Planner-runbook" : "Smartsheet-runbook");
+      const rb = await api.runbooks.create(projectId, {
+        title,
+        source: rbSource,
+        external_url: rbUrl.trim() || undefined,
+      });
+      if (rbSource === "own") {
+        navigate(`/projects/${projectId}/runbook/${rb.id}`);
+      } else {
+        setRunbooks((prev) => [rb, ...prev]);
+        setNewRunbookModal(false);
+        setRbSource(null);
+        setRbTitle("");
+        setRbUrl("");
+      }
+    } finally {
+      setRbSaving(false);
     }
   }
 
@@ -102,9 +140,12 @@ export default function ProjectDetailPage() {
       } else if (deleteTarget.type === "comm") {
         await api.communicationPlans.delete(projectId, deleteTarget.id);
         setCommPlans((prev) => prev.filter((p) => p.id !== deleteTarget.id));
-      } else {
+      } else if (deleteTarget.type === "meeting") {
         await api.meetingPlans.delete(projectId, deleteTarget.id);
         setMeetingPlans((prev) => prev.filter((p) => p.id !== deleteTarget.id));
+      } else {
+        await api.runbooks.delete(projectId, deleteTarget.id);
+        setRunbooks((prev) => prev.filter((p) => p.id !== deleteTarget.id));
       }
       setDeleteTarget(null);
     } finally {
@@ -192,6 +233,74 @@ export default function ProjectDetailPage() {
         onDelete={(item) => setDeleteTarget({ ...item, type: "meeting" })}
         countLabel={(p) => `${(p as MeetingPlan).meetings.length} møter`}
       />
+
+      <Section
+        type="runbook"
+        items={runbooks}
+        onNew={() => { setRbSource(null); setRbTitle(""); setRbUrl(""); setNewRunbookModal(true); }}
+        onOpen={(id) => navigate(`/projects/${projectId}/runbook/${id}`)}
+        onRename={(item) => { setRenameTarget({ ...item, type: "runbook" as PlanType }); setRenameValue(item.title); }}
+        onDelete={(item) => setDeleteTarget({ ...item, type: "runbook" as PlanType })}
+        countLabel={(rb) => {
+          const src = (rb as Runbook).source;
+          return src === "planner" ? "Planner" : src === "smartsheet" ? "Smartsheet" : `${(rb as Runbook).activities.length} aktiviteter`;
+        }}
+      />
+
+      {/* New runbook modal */}
+      <Modal isOpen={newRunbookModal} onRequestClose={() => setNewRunbookModal(false)} header="Ny runbook">
+        {rbSource === null ? (
+          <div>
+            <p style={{ color: "var(--bfc-base-c-2)", marginBottom: "1.25rem", fontSize: "0.9rem" }}>
+              Velg hvor runbooken skal hentes fra:
+            </p>
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: "0.75rem" }}>
+              {(["planner", "smartsheet", "own"] as const).map((src) => {
+                const cfg = { planner: { color: "#0078D4", label: "Microsoft Planner", sub: "Lenk til eksisterende plan", initial: "P" }, smartsheet: { color: "#00A88E", label: "Smartsheet", sub: "Lenk til eksisterende plan", initial: "S" }, own: { color: "#7950F2", label: "Opprett egen", sub: "Legg til aktiviteter manuelt", initial: "+" } }[src];
+                return (
+                  <button
+                    key={src}
+                    onClick={() => setRbSource(src)}
+                    style={{
+                      border: `2px solid ${cfg.color}40`,
+                      borderRadius: 10,
+                      padding: "1.25rem 1rem",
+                      background: `${cfg.color}08`,
+                      cursor: "pointer",
+                      textAlign: "center",
+                      transition: "border-color 0.15s, background 0.15s",
+                    }}
+                    onMouseEnter={(e) => { (e.currentTarget as HTMLButtonElement).style.borderColor = cfg.color; (e.currentTarget as HTMLButtonElement).style.background = `${cfg.color}14`; }}
+                    onMouseLeave={(e) => { (e.currentTarget as HTMLButtonElement).style.borderColor = `${cfg.color}40`; (e.currentTarget as HTMLButtonElement).style.background = `${cfg.color}08`; }}
+                  >
+                    <div style={{ width: 40, height: 40, borderRadius: "50%", background: cfg.color, color: "#fff", display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 700, fontSize: "1.1rem", margin: "0 auto 0.75rem" }}>
+                      {cfg.initial}
+                    </div>
+                    <div style={{ fontWeight: 600, fontSize: "0.85rem", color: cfg.color, marginBottom: "0.3rem" }}>{cfg.label}</div>
+                    <div style={{ fontSize: "0.75rem", color: "var(--bfc-base-c-2)" }}>{cfg.sub}</div>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        ) : (
+          <div style={{ display: "flex", flexDirection: "column", gap: "1rem" }}>
+            <button onClick={() => setRbSource(null)} style={{ background: "none", border: "none", cursor: "pointer", color: "var(--bfc-base-c-2)", alignSelf: "flex-start", padding: 0, fontSize: "0.9rem" }}>
+              ← Tilbake
+            </button>
+            <Input label="Navn på runbook" value={rbTitle} onChange={(e) => setRbTitle(e.target.value)} placeholder={rbSource === "own" ? "f.eks. Cutover-runbook" : "f.eks. Farvatn Runbook"} autoFocus />
+            {rbSource !== "own" && (
+              <Input label={`URL til ${rbSource === "planner" ? "Microsoft Planner" : "Smartsheet"}-planen`} value={rbUrl} onChange={(e) => setRbUrl(e.target.value)} placeholder="https://..." />
+            )}
+            <div style={{ display: "flex", justifyContent: "flex-end", gap: "0.5rem" }}>
+              <Button onClick={() => setNewRunbookModal(false)}>Avbryt</Button>
+              <Button variant="filled" onClick={createRunbook} state={rbSaving ? "inactive" : "default"}>
+                {rbSaving ? "Oppretter..." : rbSource === "own" ? "Opprett og åpne" : "Lagre"}
+              </Button>
+            </div>
+          </div>
+        )}
+      </Modal>
 
       {/* Rename modal */}
       <Modal isOpen={!!renameTarget} onRequestClose={() => setRenameTarget(null)} header="Gi nytt navn">

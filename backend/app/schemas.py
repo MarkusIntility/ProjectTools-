@@ -133,3 +133,45 @@ class MeetingPlanResponse(MeetingPlanBase):
     meetings: list[MeetingResponse] = []
 
     model_config = {"from_attributes": True}
+
+
+# Runbook
+class RunbookCreate(BaseModel):
+    title: str
+    source: str = "own"
+    external_url: str | None = None
+
+
+class RunbookUpdate(BaseModel):
+    title: str
+    external_url: str | None = None
+
+
+class ActivityCreate(BaseModel):
+    name: str
+    phase: str | None = None
+    status: str = "not_started"
+    start_date: datetime | None = None
+    end_date: datetime | None = None
+    responsible: str | None = None
+    description: str | None = None
+    sort_order: int = 0
+
+
+class ActivityResponse(ActivityCreate):
+    id: str
+    runbook_id: str
+
+    model_config = {"from_attributes": True}
+
+
+class RunbookResponse(BaseModel):
+    id: str
+    project_id: str
+    title: str
+    source: str
+    external_url: str | None = None
+    created_at: datetime
+    activities: list[ActivityResponse] = []
+
+    model_config = {"from_attributes": True}
