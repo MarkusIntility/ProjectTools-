@@ -1,4 +1,3 @@
-import { useEffect } from "react";
 import { Routes, Route, Navigate } from "react-router-dom";
 import ProjectsPage from "./pages/ProjectsPage";
 import ProjectDetailPage from "./pages/ProjectDetailPage";
@@ -6,14 +5,8 @@ import RiskMatrixPage from "./pages/RiskMatrixPage";
 import CommunicationPlanPage from "./pages/CommunicationPlanPage";
 import MeetingPlanPage from "./pages/MeetingPlanPage";
 import RunbookPage from "./pages/RunbookPage";
-import { msalInstance, isMsalConfigured } from "./auth/msalConfig";
 
 export default function App() {
-  // Initialize MSAL at app root so popup windows also handle redirects correctly
-  useEffect(() => {
-    if (isMsalConfigured) msalInstance.initialize();
-  }, []);
-
   return (
     <Routes>
       <Route path="/" element={<Navigate to="/projects" replace />} />

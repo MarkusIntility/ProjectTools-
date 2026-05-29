@@ -40,8 +40,8 @@ export default function RunbookPage() {
   const navigate = useNavigate();
   const [runbook, setRunbook] = useState<Runbook | null>(null);
 
-  // Planner state
-  const [msalReady, setMsalReady] = useState(false);
+  // Planner state — MSAL is initialized in main.tsx before React renders
+  const [msalReady] = useState(isMsalConfigured);
   const [plannerAccount, setPlannerAccount] = useState<AccountInfo | null>(null);
   const [plannerData, setPlannerData] = useState<PlannerData | null>(null);
   const [plannerLoading, setPlannerLoading] = useState(false);
@@ -64,14 +64,11 @@ export default function RunbookPage() {
     api.runbooks.get(projectId, runbookId).then(setRunbook);
   }, [projectId, runbookId]);
 
-  // Initialize MSAL once and check for existing login
+  // Check for existing MSAL login on mount
   useEffect(() => {
     if (!isMsalConfigured) return;
-    msalInstance.initialize().then(() => {
-      setMsalReady(true);
-      const accounts = msalInstance.getAllAccounts();
-      if (accounts.length > 0) setPlannerAccount(accounts[0]);
-    });
+    const accounts = msalInstance.getAllAccounts();
+    if (accounts.length > 0) setPlannerAccount(accounts[0]);
   }, []);
 
   const loadPlannerData = useCallback(async (account: AccountInfo, planId: string) => {
@@ -100,7 +97,8 @@ export default function RunbookPage() {
       const result = await msalInstance.loginPopup({ scopes: PLANNER_SCOPES });
       setPlannerAccount(result.account);
     } catch (err) {
-      setPlannerError("Innlogging avbrutt eller mislyktes.");
+      const msg = err instanceof Error ? err.message : String(err);
+      setPlannerError(`Innlogging feilet: ${msg}`);
     }
   }
 
