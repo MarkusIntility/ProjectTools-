@@ -763,6 +763,7 @@ function PlannerView({
 
 function PlannerTaskGrid({ data }: { data: PlannerData }) {
   const [filter, setFilter] = useState<Filter>("all");
+  const [fagFilter, setFagFilter] = useState<string | null>(null);
 
   const bucketMap = Object.fromEntries(data.buckets.map((b) => [b.id, b.name]));
   const taskMap = Object.fromEntries(data.tasks.map((t) => [t.id, t]));
@@ -862,9 +863,9 @@ function PlannerTaskGrid({ data }: { data: PlannerData }) {
         </div>
       </div>
 
-      {/* Active filter indicator */}
+      {/* Active status filter indicator */}
       {filter !== "all" && (
-        <div style={{ display: "flex", alignItems: "center", gap: "0.5rem", marginBottom: "1rem" }}>
+        <div style={{ display: "flex", alignItems: "center", gap: "0.5rem", marginBottom: "0.75rem" }}>
           <span style={{ fontSize: "0.8rem", color: "var(--bfc-base-c-2)" }}>
             Viser: <strong>{FILTER_LABELS[filter]}</strong> ({visibleStats.length} {isHierarchical ? "leveranser" : "oppgaver"})
           </span>
@@ -877,14 +878,50 @@ function PlannerTaskGrid({ data }: { data: PlannerData }) {
         </div>
       )}
 
+      {/* Fagområde filter chips (hierarchical Premium only) */}
+      {isHierarchical && data.buckets.length > 0 && (
+        <div style={{ display: "flex", gap: "0.4rem", marginBottom: "1.25rem", flexWrap: "wrap", alignItems: "center" }}>
+          <span style={{ fontSize: "0.78rem", color: "var(--bfc-base-c-2)", marginRight: "0.2rem" }}>Fagområde:</span>
+          {data.buckets.map((b) => {
+            const isActive = fagFilter === b.name;
+            return (
+              <button
+                key={b.id}
+                onClick={() => setFagFilter((prev) => (prev === b.name ? null : b.name))}
+                style={{
+                  padding: "3px 12px", borderRadius: 20, cursor: "pointer", fontSize: "0.78rem", fontWeight: 600,
+                  border: `1px solid ${isActive ? "#0078D4" : "#0078D430"}`,
+                  background: isActive ? "#0078D4" : "#0078D408",
+                  color: isActive ? "#fff" : "#0078D4",
+                  transition: "all 0.15s",
+                }}
+              >
+                {b.name}
+              </button>
+            );
+          })}
+          {fagFilter && (
+            <button
+              onClick={() => setFagFilter(null)}
+              style={{ background: "none", border: "1px solid var(--bfc-base-dimmed)", cursor: "pointer", color: "var(--bfc-base-c-2)", padding: "2px 8px", borderRadius: 4, fontSize: "0.78rem", marginLeft: "0.25rem" }}
+            >
+              × Fjern
+            </button>
+          )}
+        </div>
+      )}
+
       <div style={{ display: "grid", gap: "1.5rem" }}>
         {isHierarchical ? (
           // ── Hierarchical: L1 (fase) as section headers, L2 (leveranse) as rows with fagomrade chip
           <>
             {l1Tasks.map((l1) => {
               const allL2 = l2ByL1[l1.id] ?? [];
-              const visibleL2 = allL2.filter((t) => matchPlannerFilter(t.percentComplete, filter));
-              if (visibleL2.length === 0 && filter !== "all") return null;
+              const visibleL2 = allL2.filter((t) =>
+                matchPlannerFilter(t.percentComplete, filter) &&
+                (!fagFilter || getFagomrade(t) === fagFilter)
+              );
+              if (visibleL2.length === 0 && (filter !== "all" || fagFilter !== null)) return null;
               const avg = allL2.length > 0 ? Math.round(allL2.reduce((s, t) => s + t.percentComplete, 0) / allL2.length) : 0;
               const sectionDone = allL2.filter((t) => t.percentComplete === 100).length;
               return (
