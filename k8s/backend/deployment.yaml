@@ -19,7 +19,7 @@ spec:
     spec:
       containers:
         - name: backend
-          image: ghcr.io/markusintility/projecttools-backend:f8601d6d22ebca1724d2e2b1cbcffe1e5982a7a9
+          image: ghcr.io/markusintility/projecttools-backend:a52e502b6efb95ab667794550dd158fd41fe395b
           ports:
             - containerPort: 8000
               name: http
