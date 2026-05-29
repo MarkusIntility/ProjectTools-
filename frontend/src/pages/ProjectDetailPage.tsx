@@ -116,15 +116,7 @@ export default function ProjectDetailPage() {
         source: rbSource,
         external_url: rbUrl.trim() || undefined,
       });
-      if (rbSource === "own") {
-        navigate(`/projects/${projectId}/runbook/${rb.id}`);
-      } else {
-        setRunbooks((prev) => [rb, ...prev]);
-        setNewRunbookModal(false);
-        setRbSource(null);
-        setRbTitle("");
-        setRbUrl("");
-      }
+      navigate(`/projects/${projectId}/runbook/${rb.id}`);
     } finally {
       setRbSaving(false);
     }
