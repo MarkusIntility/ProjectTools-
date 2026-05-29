@@ -21,6 +21,29 @@ const SOURCE_CONFIG = {
   own:        { label: "Egen",              color: "#7950F2", initial: "E" },
 };
 
+type Filter = "all" | "done" | "in_progress" | "remaining";
+
+const FILTER_LABELS: Record<Filter, string> = {
+  all:         "Alle",
+  done:        "Ferdig",
+  in_progress: "Pågående",
+  remaining:   "Gjenstår",
+};
+
+function matchActivityFilter(status: RunbookActivity["status"], f: Filter): boolean {
+  if (f === "done")        return status === "done";
+  if (f === "in_progress") return status === "in_progress";
+  if (f === "remaining")   return status !== "done" && status !== "in_progress";
+  return true;
+}
+
+function matchPlannerFilter(pct: number, f: Filter): boolean {
+  if (f === "done")        return pct === 100;
+  if (f === "in_progress") return pct > 0 && pct < 100;
+  if (f === "remaining")   return pct === 0;
+  return true;
+}
+
 type Tab = "dashboard" | "aktiviteter" | "pcer" | "lokasjoner" | "applikasjoner";
 const TABS: { id: Tab; label: string }[] = [
   { id: "dashboard",     label: "Dashboard" },
@@ -64,6 +87,8 @@ export default function RunbookPage() {
 
   const [deleteTarget, setDeleteTarget] = useState<RunbookActivity | null>(null);
   const [deleting, setDeleting] = useState(false);
+
+  const [ownFilter, setOwnFilter] = useState<Filter>("all");
 
   const [editRunbookModal, setEditRunbookModal] = useState(false);
   const [runbookTitle, setRunbookTitle] = useState("");
@@ -316,23 +341,49 @@ export default function RunbookPage() {
               </div>
 
               {total > 0 && (
-                <div style={{ display: "flex", gap: "1rem", marginBottom: "1.75rem", flexWrap: "wrap" }}>
-                  {[
-                    { label: "Totalt",    value: total,                     color: "#868E96" },
-                    { label: "Ferdig",    value: done,                      color: "#2F9E44" },
-                    { label: "Pågående",  value: inProgress,                color: "#1971C2" },
-                    { label: "Gjenstår",  value: total - done - inProgress, color: "#F76707" },
-                  ].map(({ label, value, color }) => (
-                    <div key={label} style={{
-                      padding: "0.6rem 1.1rem", borderRadius: 8,
-                      background: `${color}12`, border: `1px solid ${color}30`,
-                      textAlign: "center", minWidth: 80,
-                    }}>
-                      <div style={{ fontSize: "1.4rem", fontWeight: 700, color }}>{value}</div>
-                      <div style={{ fontSize: "0.75rem", color: "var(--bfc-base-c-2)" }}>{label}</div>
+                <>
+                  <div style={{ display: "flex", gap: "1rem", marginBottom: "1rem", flexWrap: "wrap" }}>
+                    {([
+                      { key: "all"         as Filter, label: "Totalt",   value: total,                     color: "#868E96" },
+                      { key: "done"        as Filter, label: "Ferdig",   value: done,                      color: "#2F9E44" },
+                      { key: "in_progress" as Filter, label: "Pågående", value: inProgress,                color: "#1971C2" },
+                      { key: "remaining"   as Filter, label: "Gjenstår", value: total - done - inProgress, color: "#F76707" },
+                    ]).map(({ key, label, value, color }) => {
+                      const isActive = ownFilter === key;
+                      return (
+                        <div
+                          key={key}
+                          onClick={() => key !== "all" && setOwnFilter((prev) => (prev === key ? "all" : key))}
+                          style={{
+                            padding: "0.6rem 1.1rem", borderRadius: 8, textAlign: "center", minWidth: 80,
+                            background: isActive ? `${color}22` : `${color}12`,
+                            border: `1px solid ${isActive ? color : `${color}30`}`,
+                            cursor: key === "all" ? "default" : "pointer",
+                            outline: isActive && key !== "all" ? `2px solid ${color}` : "none",
+                            outlineOffset: 1,
+                            transition: "all 0.15s",
+                          }}
+                        >
+                          <div style={{ fontSize: "1.4rem", fontWeight: 700, color }}>{value}</div>
+                          <div style={{ fontSize: "0.75rem", color: "var(--bfc-base-c-2)" }}>{label}</div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                  {ownFilter !== "all" && (
+                    <div style={{ display: "flex", alignItems: "center", gap: "0.5rem", marginBottom: "1rem" }}>
+                      <span style={{ fontSize: "0.8rem", color: "var(--bfc-base-c-2)" }}>
+                        Viser: <strong>{FILTER_LABELS[ownFilter]}</strong>
+                      </span>
+                      <button
+                        onClick={() => setOwnFilter("all")}
+                        style={{ background: "none", border: "1px solid var(--bfc-base-dimmed)", cursor: "pointer", color: "var(--bfc-base-c-2)", padding: "1px 8px", borderRadius: 4, fontSize: "0.78rem" }}
+                      >
+                        × Fjern filter
+                      </button>
                     </div>
-                  ))}
-                </div>
+                  )}
+                </>
               )}
 
               {total === 0 ? (
@@ -347,7 +398,9 @@ export default function RunbookPage() {
               ) : (
                 <div style={{ display: "grid", gap: "1.5rem" }}>
                   {orderedPhases.map((phase) => {
-                    const acts = runbook.activities.filter((a) => (a.phase ?? "") === phase);
+                    const allActs = runbook.activities.filter((a) => (a.phase ?? "") === phase);
+                    const acts = allActs.filter((a) => matchActivityFilter(a.status, ownFilter));
+                    if (acts.length === 0 && ownFilter !== "all") return null;
                     return (
                       <PhaseGroup
                         key={phase || "__none__"}
@@ -1001,43 +1054,83 @@ function PlannerView({
 // ─── Planner task list ────────────────────────────────────────────────────────
 
 function PlannerTaskList({ data }: { data: PlannerData }) {
+  const [filter, setFilter] = useState<Filter>("all");
+
   const bucketMap = Object.fromEntries(data.buckets.map((b) => [b.id, b.name]));
-  const grouped: Record<string, PlannerTask[]> = {};
+
+  // All tasks grouped (unfiltered — for progress counts)
+  const allGrouped: Record<string, PlannerTask[]> = {};
   for (const task of data.tasks) {
     const bucket = bucketMap[task.bucketId] ?? "Ukjent fase";
-    if (!grouped[bucket]) grouped[bucket] = [];
-    grouped[bucket].push(task);
+    if (!allGrouped[bucket]) allGrouped[bucket] = [];
+    allGrouped[bucket].push(task);
   }
 
   const done = data.tasks.filter((t) => t.percentComplete === 100).length;
   const inProgress = data.tasks.filter((t) => t.percentComplete > 0 && t.percentComplete < 100).length;
   const total = data.tasks.length;
 
+  const visibleTasks = data.tasks.filter((t) => matchPlannerFilter(t.percentComplete, filter));
+
   return (
     <div>
-      <div style={{ display: "flex", gap: "1rem", marginBottom: "1.75rem", flexWrap: "wrap" }}>
-        {[
-          { label: "Totalt",   value: total,               color: "#868E96" },
-          { label: "Ferdig",   value: done,                color: "#2F9E44" },
-          { label: "Pågående", value: inProgress,          color: "#1971C2" },
-          { label: "Gjenstår", value: total - done - inProgress, color: "#F76707" },
-        ].map(({ label, value, color }) => (
-          <div key={label} style={{ padding: "0.6rem 1.1rem", borderRadius: 8, background: `${color}12`, border: `1px solid ${color}30`, textAlign: "center", minWidth: 80 }}>
-            <div style={{ fontSize: "1.4rem", fontWeight: 700, color }}>{value}</div>
-            <div style={{ fontSize: "0.75rem", color: "var(--bfc-base-c-2)" }}>{label}</div>
-          </div>
-        ))}
+      <div style={{ display: "flex", gap: "1rem", marginBottom: "1rem", flexWrap: "wrap" }}>
+        {([
+          { key: "all"         as Filter, label: "Totalt",   value: total,                     color: "#868E96" },
+          { key: "done"        as Filter, label: "Ferdig",   value: done,                      color: "#2F9E44" },
+          { key: "in_progress" as Filter, label: "Pågående", value: inProgress,                color: "#1971C2" },
+          { key: "remaining"   as Filter, label: "Gjenstår", value: total - done - inProgress, color: "#F76707" },
+        ]).map(({ key, label, value, color }) => {
+          const isActive = filter === key;
+          return (
+            <div
+              key={key}
+              onClick={() => key !== "all" && setFilter((prev) => (prev === key ? "all" : key))}
+              style={{
+                padding: "0.6rem 1.1rem", borderRadius: 8, textAlign: "center", minWidth: 80,
+                background: isActive ? `${color}22` : `${color}12`,
+                border: `1px solid ${isActive ? color : `${color}30`}`,
+                cursor: key === "all" ? "default" : "pointer",
+                outline: isActive && key !== "all" ? `2px solid ${color}` : "none",
+                outlineOffset: 1,
+                transition: "all 0.15s",
+              }}
+            >
+              <div style={{ fontSize: "1.4rem", fontWeight: 700, color }}>{value}</div>
+              <div style={{ fontSize: "0.75rem", color: "var(--bfc-base-c-2)" }}>{label}</div>
+            </div>
+          );
+        })}
       </div>
 
+      {filter !== "all" && (
+        <div style={{ display: "flex", alignItems: "center", gap: "0.5rem", marginBottom: "1rem" }}>
+          <span style={{ fontSize: "0.8rem", color: "var(--bfc-base-c-2)" }}>
+            Viser: <strong>{FILTER_LABELS[filter]}</strong> ({visibleTasks.length} aktiviteter)
+          </span>
+          <button
+            onClick={() => setFilter("all")}
+            style={{ background: "none", border: "1px solid var(--bfc-base-dimmed)", cursor: "pointer", color: "var(--bfc-base-c-2)", padding: "1px 8px", borderRadius: 4, fontSize: "0.78rem" }}
+          >
+            × Fjern filter
+          </button>
+        </div>
+      )}
+
       <div style={{ display: "grid", gap: "1.5rem" }}>
-        {Object.entries(grouped).map(([bucket, tasks]) => {
-          const bucketDone = tasks.filter((t) => t.percentComplete === 100).length;
-          const pct = tasks.length > 0 ? Math.round((bucketDone / tasks.length) * 100) : 0;
+        {Object.entries(allGrouped).map(([bucket, allTasks]) => {
+          const tasks = visibleTasks.filter((t) => (bucketMap[t.bucketId] ?? "Ukjent fase") === bucket);
+          if (tasks.length === 0 && filter !== "all") return null;
+          const bucketDone = allTasks.filter((t) => t.percentComplete === 100).length;
+          const pct = allTasks.length > 0 ? Math.round((bucketDone / allTasks.length) * 100) : 0;
           return (
             <div key={bucket}>
               <div style={{ display: "flex", alignItems: "center", gap: "0.75rem", marginBottom: "0.5rem" }}>
                 <h3 className="bf-h4" style={{ margin: 0, flex: 1 }}>{bucket}</h3>
-                <span style={{ fontSize: "0.75rem", color: "var(--bfc-base-c-3)" }}>{bucketDone}/{tasks.length} ferdig</span>
+                <span style={{ fontSize: "0.75rem", color: "var(--bfc-base-c-3)" }}>
+                  {bucketDone}/{allTasks.length} ferdig
+                  {filter !== "all" && tasks.length < allTasks.length && ` (viser ${tasks.length})`}
+                </span>
                 <div style={{ width: 80, height: 6, borderRadius: 3, background: "var(--bfc-base-dimmed)", overflow: "hidden" }}>
                   <div style={{ width: `${pct}%`, height: "100%", background: "#2F9E44", borderRadius: 3, transition: "width 0.3s" }} />
                 </div>
