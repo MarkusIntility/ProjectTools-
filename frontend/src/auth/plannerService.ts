@@ -37,8 +37,7 @@ interface DataverseInstance {
 interface DataverseTask {
   msdyn_projecttaskid: string;
   msdyn_subject: string;
-  msdyn_progress?: number;        // 0.0–1.0 in some versions
-  msdyn_percentcomplete?: number; // 0–100 in other versions
+  msdyn_progress?: number; // 0.0–1.0
   msdyn_scheduledstart: string | null;
   msdyn_scheduledend: string | null;
   "_msdyn_projectbucket_value"?: string | null;
@@ -143,7 +142,6 @@ async function fetchPlannerPremiumData(
       "msdyn_projecttaskid",
       "msdyn_subject",
       "msdyn_progress",
-      "msdyn_percentcomplete",
       "msdyn_scheduledstart",
       "msdyn_scheduledend",
       "_msdyn_projectbucket_value",
@@ -195,10 +193,7 @@ async function fetchPlannerPremiumData(
     const defaultBucketId = buckets[0].id;
 
     const tasks: PlannerTask[] = dvTasks.map((t) => {
-      const pct =
-        t.msdyn_percentcomplete !== undefined
-          ? t.msdyn_percentcomplete
-          : Math.round((t.msdyn_progress ?? 0) * 100);
+      const pct = Math.round((t.msdyn_progress ?? 0) * 100);
       return {
         id: t.msdyn_projecttaskid,
         title: t.msdyn_subject,
