@@ -2,13 +2,15 @@ apiVersion: argoproj.io/v1alpha1
 kind: Application
 metadata:
   name: projecttools
-  namespace: argocd
+  namespace: openshift-gitops
 spec:
   project: default
   source:
     repoURL: https://github.com/MarkusIntility/ProjectTools-
     targetRevision: main
     path: k8s
+    directory:
+      recurse: true
   destination:
     server: https://kubernetes.default.svc  # bytt ut med kluster-URL hvis ekstern
     namespace: project-tools

@@ -31,3 +31,7 @@ Thumbs.db
 
 # Logs
 *.log
+
+# Local tools
+oc.exe
+rbac-patch.json
