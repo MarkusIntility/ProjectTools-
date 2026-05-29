@@ -47,10 +47,6 @@ interface DataverseTask {
   "_msdyn_projectsprint_value"?: string | null;
 }
 
-interface DataverseLabelEntity {
-  id: string;
-  name: string;
-}
 
 interface DataverseBucket {
   msdyn_projectbucketid: string;
