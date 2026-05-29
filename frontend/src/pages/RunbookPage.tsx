@@ -1089,6 +1089,21 @@ function PlannerTaskRow({ task }: { task: PlannerTask }) {
         {task.title}
       </span>
 
+      {task.labels && task.labels.length > 0 && (
+        <div style={{ display: "flex", gap: "0.3rem", flexShrink: 0, flexWrap: "wrap", maxWidth: 200 }}>
+          {task.labels.map((label) => (
+            <span key={label} style={{
+              fontSize: "0.7rem", fontWeight: 600,
+              padding: "2px 7px", borderRadius: 20,
+              background: "#7950F218", color: "#7950F2",
+              whiteSpace: "nowrap",
+            }}>
+              {label}
+            </span>
+          ))}
+        </div>
+      )}
+
       {task.percentComplete > 0 && task.percentComplete < 100 && (
         <div style={{ width: 60, height: 5, borderRadius: 3, background: "var(--bfc-base-dimmed)", overflow: "hidden", flexShrink: 0 }}>
           <div style={{ width: `${task.percentComplete}%`, height: "100%", background: cfg.color, borderRadius: 3 }} />
