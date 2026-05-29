@@ -33,7 +33,7 @@ interface DataverseInstance {
   ApiUrl: string;         // "https://org.api.crm4.dynamics.com/"
   Url: string;            // "https://org.crm4.dynamics.com/"
   FriendlyName: string;
-  OrganizationId?: string; // GUID matching /org/{id} in Planner Premium URLs
+  Id?: string;            // GUID — Global Discovery returns "Id", not "OrganizationId"
 }
 
 interface DataverseTask {
@@ -43,6 +43,12 @@ interface DataverseTask {
   msdyn_scheduledstart: string | null;
   msdyn_scheduledend: string | null;
   "_msdyn_projectbucket_value"?: string | null;
+  "_msdyn_resourcecategory_value"?: string | null;
+}
+
+interface DataverseResourceCategory {
+  msdyn_resourcecategoryid: string;
+  msdyn_name: string;
 }
 
 interface DataverseBucket {
@@ -104,12 +110,12 @@ async function fetchPlannerPremiumData(
     throw new Error("PREMIUM_PLAN: Ingen Dataverse-miljøer funnet for denne kontoen. Planner Premium krever Power Platform-lisens.");
   }
 
-  console.log("[Planner] Dataverse-miljøer:", instances.map(i => `${i.FriendlyName} (${i.OrganizationId})`).join(", "));
+  console.log("[Planner] Dataverse-miljøer:", instances.map(i => `${i.FriendlyName} (${i.Id})`).join(", "));
 
   // 2. Find the environment matching the org ID from the Planner Premium URL
   let env: DataverseInstance | undefined;
   if (orgId) {
-    env = instances.find(i => i.OrganizationId?.toLowerCase() === orgId.toLowerCase());
+    env = instances.find(i => i.Id?.toLowerCase() === orgId.toLowerCase());
     if (env) {
       console.log("[Planner] Fant riktig miljø via orgId:", env.FriendlyName);
     } else {
@@ -147,6 +153,7 @@ async function fetchPlannerPremiumData(
       "msdyn_scheduledstart",
       "msdyn_scheduledend",
       "_msdyn_projectbucket_value",
+      "_msdyn_resourcecategory_value",
     ].join(",");
 
     const tasksUrl = `${apiUrl}/api/data/v9.2/msdyn_projecttasks?$filter=_msdyn_project_value eq ${planId}&$select=${taskFields}&$orderby=msdyn_scheduledstart asc`;
@@ -172,34 +179,30 @@ async function fetchPlannerPremiumData(
     const { value: dvTasks }: { value: DataverseTask[] } = await tasksRes.json();
     console.log(`[Planner] Fant ${dvTasks.length} oppgaver i ${candidate.FriendlyName}`);
 
-    // Investigation: fetch first task without $select to discover all available fields
-    fetch(`${apiUrl}/api/data/v9.2/msdyn_projecttasks?$filter=_msdyn_project_value eq ${planId}&$top=1`, { headers: dvHeaders })
-      .then((r) => r.json())
-      .then((d) => {
-        if (d.value?.[0]) {
-          const fields = Object.keys(d.value[0]).filter((k) => !k.startsWith("@")).sort();
-          console.log("[Planner Premium] Tilgjengelige felt på msdyn_projecttask:", fields.join(", "));
-          const labelCandidates = fields.filter((f) =>
-            ["label", "categ", "tag", "department"].some((kw) => f.toLowerCase().includes(kw))
-          );
-          if (labelCandidates.length) {
-            console.log("[Planner Premium] Mulige label-felt:", labelCandidates.join(", "));
-          } else {
-            console.log("[Planner Premium] Ingen åpenbare label-felt funnet — vurder lokal label-løsning.");
-          }
-        }
-      })
-      .catch(() => {});
+    // Fetch buckets and resource categories (fagavdeling labels) in parallel
+    const [bucketsRes, catRes] = await Promise.all([
+      fetch(
+        `${apiUrl}/api/data/v9.2/msdyn_projectbuckets?$filter=_msdyn_project_value eq ${planId}&$select=msdyn_projectbucketid,msdyn_name&$orderby=msdyn_name asc`,
+        { headers: dvHeaders }
+      ),
+      fetch(
+        `${apiUrl}/api/data/v9.2/msdyn_resourcecategories?$select=msdyn_resourcecategoryid,msdyn_name`,
+        { headers: dvHeaders }
+      ),
+    ]);
 
-    // Fetch buckets
     let dvBuckets: DataverseBucket[] = [];
-    const bucketsRes = await fetch(
-      `${apiUrl}/api/data/v9.2/msdyn_projectbuckets?$filter=_msdyn_project_value eq ${planId}&$select=msdyn_projectbucketid,msdyn_name&$orderby=msdyn_name asc`,
-      { headers: dvHeaders }
-    );
     if (bucketsRes.ok) {
       const { value } = await bucketsRes.json();
       dvBuckets = value || [];
+    }
+
+    const categoryMap: Record<string, string> = {};
+    if (catRes.ok) {
+      const { value: categories }: { value: DataverseResourceCategory[] } = await catRes.json();
+      for (const cat of categories) {
+        categoryMap[cat.msdyn_resourcecategoryid] = cat.msdyn_name;
+      }
     }
 
     const buckets: PlannerBucket[] =
@@ -215,6 +218,8 @@ async function fetchPlannerPremiumData(
 
     const tasks: PlannerTask[] = dvTasks.map((t) => {
       const pct = Math.round((t.msdyn_progress ?? 0) * 100);
+      const catId = t["_msdyn_resourcecategory_value"];
+      const labels = catId && categoryMap[catId] ? [categoryMap[catId]] : [];
       return {
         id: t.msdyn_projecttaskid,
         title: t.msdyn_subject,
@@ -224,6 +229,7 @@ async function fetchPlannerPremiumData(
         dueDateTime: t.msdyn_scheduledend,
         assignments: {},
         priority: 5,
+        labels,
       };
     });
 
