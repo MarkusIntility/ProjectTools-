@@ -5,6 +5,7 @@ import RiskMatrixPage from "./pages/RiskMatrixPage";
 import CommunicationPlanPage from "./pages/CommunicationPlanPage";
 import MeetingPlanPage from "./pages/MeetingPlanPage";
 import RunbookPage from "./pages/RunbookPage";
+import ProjectPlanPage from "./pages/ProjectPlanPage";
 
 export default function App() {
   return (
@@ -16,6 +17,7 @@ export default function App() {
       <Route path="/projects/:projectId/communication-plan/:planId" element={<CommunicationPlanPage />} />
       <Route path="/projects/:projectId/meeting-plan/:planId" element={<MeetingPlanPage />} />
       <Route path="/projects/:projectId/runbook/:runbookId" element={<RunbookPage />} />
+      <Route path="/projects/:projectId/project-plan/:planId" element={<ProjectPlanPage />} />
     </Routes>
   );
 }

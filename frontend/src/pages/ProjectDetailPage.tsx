@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { Button, Input, Modal } from "@intility/bifrost-react";
-import { api, type Project, type RiskMatrix, type CommunicationPlan, type MeetingPlan, type Runbook } from "../api/client";
+import { api, type Project, type RiskMatrix, type CommunicationPlan, type MeetingPlan, type Runbook, type ProjectPlan } from "../api/client";
 
 const ACCENT_COLORS = [
   "#4C6EF5", "#7950F2", "#E64980", "#F76707",
@@ -21,13 +21,14 @@ function initials(name: string): string {
 }
 
 const SECTION_CONFIG = {
-  risk:    { color: "#E03131", label: "Risikomatriser" },
-  comm:    { color: "#1971C2", label: "Kommunikasjonsplaner" },
-  meeting: { color: "#2F9E44", label: "Møteplaner" },
-  runbook: { color: "#7950F2", label: "Runbooks" },
+  risk:        { color: "#E03131", label: "Risikomatriser" },
+  comm:        { color: "#1971C2", label: "Kommunikasjonsplaner" },
+  meeting:     { color: "#2F9E44", label: "Møteplaner" },
+  projectplan: { color: "#0CA678", label: "Prosjektplaner" },
+  runbook:     { color: "#7950F2", label: "Runbooks" },
 };
 
-type PlanType = "risk" | "comm" | "meeting" | "runbook";
+type PlanType = "risk" | "comm" | "meeting" | "projectplan" | "runbook";
 type PlanItem = { id: string; title: string };
 
 export default function ProjectDetailPage() {
@@ -38,6 +39,7 @@ export default function ProjectDetailPage() {
   const [commPlans, setCommPlans] = useState<CommunicationPlan[]>([]);
   const [meetingPlans, setMeetingPlans] = useState<MeetingPlan[]>([]);
   const [runbooks, setRunbooks] = useState<Runbook[]>([]);
+  const [projectPlans, setProjectPlans] = useState<ProjectPlan[]>([]);
 
   // New runbook modal state
   const [newRunbookModal, setNewRunbookModal] = useState(false);
@@ -45,6 +47,13 @@ export default function ProjectDetailPage() {
   const [rbTitle, setRbTitle] = useState("");
   const [rbUrl, setRbUrl] = useState("");
   const [rbSaving, setRbSaving] = useState(false);
+
+  // New project plan modal state
+  const [newPlanModal, setNewPlanModal] = useState(false);
+  const [ppSource, setPpSource] = useState<"own" | "planner" | "smartsheet" | null>(null);
+  const [ppTitle, setPpTitle] = useState("");
+  const [ppUrl, setPpUrl] = useState("");
+  const [ppSaving, setPpSaving] = useState(false);
 
   const [renameTarget, setRenameTarget] = useState<{ id: string; title: string; type: PlanType } | null>(null);
   const [renameValue, setRenameValue] = useState("");
@@ -60,12 +69,14 @@ export default function ProjectDetailPage() {
       api.communicationPlans.list(projectId),
       api.meetingPlans.list(projectId),
       api.runbooks.list(projectId),
-    ]).then(([p, rm, cp, mp, rb]) => {
+      api.projectPlans.list(projectId),
+    ]).then(([p, rm, cp, mp, rb, pp]) => {
       setProject(p);
       setRiskMatrices(rm);
       setCommPlans(cp);
       setMeetingPlans(mp);
       setRunbooks(rb);
+      setProjectPlans(pp);
     });
   }, [projectId]);
 
@@ -96,6 +107,9 @@ export default function ProjectDetailPage() {
       } else if (renameTarget.type === "meeting") {
         const u = await api.meetingPlans.update(projectId, renameTarget.id, { title: renameValue });
         setMeetingPlans((prev) => prev.map((p) => (p.id === u.id ? u : p)));
+      } else if (renameTarget.type === "projectplan") {
+        const u = await api.projectPlans.update(projectId, renameTarget.id, { title: renameValue });
+        setProjectPlans((prev) => prev.map((p) => (p.id === u.id ? u : p)));
       } else {
         const u = await api.runbooks.update(projectId, renameTarget.id, { title: renameValue });
         setRunbooks((prev) => prev.map((p) => (p.id === u.id ? u : p)));
@@ -103,6 +117,22 @@ export default function ProjectDetailPage() {
       setRenameTarget(null);
     } finally {
       setRenameSaving(false);
+    }
+  }
+
+  async function createProjectPlan() {
+    if (!projectId || !ppSource) return;
+    setPpSaving(true);
+    try {
+      const title = ppTitle.trim() || (ppSource === "own" ? "Ny prosjektplan" : ppSource === "planner" ? "Planner-prosjektplan" : "Smartsheet-prosjektplan");
+      const pp = await api.projectPlans.create(projectId, {
+        title,
+        source: ppSource,
+        external_url: ppUrl.trim() || undefined,
+      });
+      navigate(`/projects/${projectId}/project-plan/${pp.id}`);
+    } finally {
+      setPpSaving(false);
     }
   }
 
@@ -135,6 +165,9 @@ export default function ProjectDetailPage() {
       } else if (deleteTarget.type === "meeting") {
         await api.meetingPlans.delete(projectId, deleteTarget.id);
         setMeetingPlans((prev) => prev.filter((p) => p.id !== deleteTarget.id));
+      } else if (deleteTarget.type === "projectplan") {
+        await api.projectPlans.delete(projectId, deleteTarget.id);
+        setProjectPlans((prev) => prev.filter((p) => p.id !== deleteTarget.id));
       } else {
         await api.runbooks.delete(projectId, deleteTarget.id);
         setRunbooks((prev) => prev.filter((p) => p.id !== deleteTarget.id));
@@ -227,6 +260,19 @@ export default function ProjectDetailPage() {
       />
 
       <Section
+        type="projectplan"
+        items={projectPlans}
+        onNew={() => { setPpSource(null); setPpTitle(""); setPpUrl(""); setNewPlanModal(true); }}
+        onOpen={(id) => navigate(`/projects/${projectId}/project-plan/${id}`)}
+        onRename={(item) => { setRenameTarget({ ...item, type: "projectplan" }); setRenameValue(item.title); }}
+        onDelete={(item) => setDeleteTarget({ ...item, type: "projectplan" })}
+        countLabel={(pp) => {
+          const src = (pp as ProjectPlan).source;
+          return src === "planner" ? "Planner" : src === "smartsheet" ? "Smartsheet" : `${(pp as ProjectPlan).tasks.length} oppgaver`;
+        }}
+      />
+
+      <Section
         type="runbook"
         items={runbooks}
         onNew={() => { setRbSource(null); setRbTitle(""); setRbUrl(""); setNewRunbookModal(true); }}
@@ -288,6 +334,51 @@ export default function ProjectDetailPage() {
               <Button onClick={() => setNewRunbookModal(false)}>Avbryt</Button>
               <Button variant="filled" onClick={createRunbook} state={rbSaving ? "inactive" : "default"}>
                 {rbSaving ? "Oppretter..." : rbSource === "own" ? "Opprett og åpne" : "Lagre"}
+              </Button>
+            </div>
+          </div>
+        )}
+      </Modal>
+
+      {/* New project plan modal */}
+      <Modal isOpen={newPlanModal} onRequestClose={() => setNewPlanModal(false)} header="Ny prosjektplan">
+        {ppSource === null ? (
+          <div>
+            <p style={{ color: "var(--bfc-base-c-2)", marginBottom: "1.25rem", fontSize: "0.9rem" }}>
+              Velg hvor prosjektplanen skal hentes fra:
+            </p>
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: "0.75rem" }}>
+              {(["planner", "smartsheet", "own"] as const).map((src) => {
+                const cfg = { planner: { color: "#0078D4", label: "Microsoft Planner", sub: "Lenk til eksisterende plan", initial: "P" }, smartsheet: { color: "#00A88E", label: "Smartsheet", sub: "Lenk til eksisterende plan", initial: "S" }, own: { color: "#0CA678", label: "Opprett egen", sub: "Legg til oppgaver manuelt", initial: "+" } }[src];
+                return (
+                  <button
+                    key={src}
+                    onClick={() => setPpSource(src)}
+                    style={{ border: `2px solid ${cfg.color}40`, borderRadius: 10, padding: "1.25rem 1rem", background: `${cfg.color}08`, cursor: "pointer", textAlign: "center", transition: "border-color 0.15s, background 0.15s" }}
+                    onMouseEnter={(e) => { (e.currentTarget as HTMLButtonElement).style.borderColor = cfg.color; (e.currentTarget as HTMLButtonElement).style.background = `${cfg.color}14`; }}
+                    onMouseLeave={(e) => { (e.currentTarget as HTMLButtonElement).style.borderColor = `${cfg.color}40`; (e.currentTarget as HTMLButtonElement).style.background = `${cfg.color}08`; }}
+                  >
+                    <div style={{ width: 40, height: 40, borderRadius: "50%", background: cfg.color, color: "#fff", display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 700, fontSize: "1.1rem", margin: "0 auto 0.75rem" }}>{cfg.initial}</div>
+                    <div style={{ fontWeight: 600, fontSize: "0.85rem", color: cfg.color, marginBottom: "0.3rem" }}>{cfg.label}</div>
+                    <div style={{ fontSize: "0.75rem", color: "var(--bfc-base-c-2)" }}>{cfg.sub}</div>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        ) : (
+          <div style={{ display: "flex", flexDirection: "column", gap: "1rem" }}>
+            <button onClick={() => setPpSource(null)} style={{ background: "none", border: "none", cursor: "pointer", color: "var(--bfc-base-c-2)", alignSelf: "flex-start", padding: 0, fontSize: "0.9rem" }}>
+              ← Tilbake
+            </button>
+            <Input label="Navn på prosjektplan" value={ppTitle} onChange={(e) => setPpTitle(e.target.value)} placeholder={ppSource === "own" ? "f.eks. Prosjektplan Migration Services" : "f.eks. Migration Services Plan"} autoFocus />
+            {ppSource !== "own" && (
+              <Input label={`URL til ${ppSource === "planner" ? "Microsoft Planner" : "Smartsheet"}-planen`} value={ppUrl} onChange={(e) => setPpUrl(e.target.value)} placeholder="https://..." />
+            )}
+            <div style={{ display: "flex", justifyContent: "flex-end", gap: "0.5rem" }}>
+              <Button onClick={() => setNewPlanModal(false)}>Avbryt</Button>
+              <Button variant="filled" onClick={createProjectPlan} state={ppSaving ? "inactive" : "default"}>
+                {ppSaving ? "Oppretter..." : ppSource === "own" ? "Opprett og åpne" : "Lagre"}
               </Button>
             </div>
           </div>

@@ -175,3 +175,45 @@ class RunbookResponse(BaseModel):
     activities: list[ActivityResponse] = []
 
     model_config = {"from_attributes": True}
+
+
+# Project Plan
+class ProjectPlanCreate(BaseModel):
+    title: str
+    source: str = "own"
+    external_url: str | None = None
+
+
+class ProjectPlanUpdate(BaseModel):
+    title: str
+    external_url: str | None = None
+
+
+class ProjectPlanTaskCreate(BaseModel):
+    name: str
+    bucket: str | None = None
+    percent_complete: int = 0
+    start_date: datetime | None = None
+    end_date: datetime | None = None
+    responsible: str | None = None
+    description: str | None = None
+    sort_order: int = 0
+
+
+class ProjectPlanTaskResponse(ProjectPlanTaskCreate):
+    id: str
+    plan_id: str
+
+    model_config = {"from_attributes": True}
+
+
+class ProjectPlanResponse(BaseModel):
+    id: str
+    project_id: str
+    title: str
+    source: str
+    external_url: str | None = None
+    created_at: datetime
+    tasks: list[ProjectPlanTaskResponse] = []
+
+    model_config = {"from_attributes": True}
