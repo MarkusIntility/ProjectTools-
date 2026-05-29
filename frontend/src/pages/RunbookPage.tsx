@@ -709,10 +709,9 @@ function PlannerView({
         <div style={{ padding: "1rem 1.25rem", borderRadius: 8, background: error.startsWith("PREMIUM_PLAN") ? "#FFF3BF" : "#FFE3E3", border: `1px solid ${error.startsWith("PREMIUM_PLAN") ? "#FAB005" : "#FFA8A8"}`, marginBottom: "1rem" }}>
           {error.startsWith("PREMIUM_PLAN") ? (
             <>
-              <div style={{ fontWeight: 600, color: "#5C3A00", marginBottom: "0.4rem" }}>Planner Premium støttes ikke via API</div>
-              <p style={{ margin: "0 0 0.75rem", fontSize: "0.875rem", color: "#7C4D00" }}>
-                Planer fra <strong>planner.cloud.microsoft/premiumplan/</strong> er lagret i Microsoft Dataverse og er ikke tilgjengelige via standard Graph Planner API.
-                For å se aktivitetene, åpne planen direkte i Planner.
+              <div style={{ fontWeight: 600, color: "#5C3A00", marginBottom: "0.4rem" }}>Planner Premium — Dataverse-feil</div>
+              <p style={{ margin: "0 0 0.75rem", fontSize: "0.875rem", color: "#7C4D00", fontFamily: "monospace", wordBreak: "break-word" }}>
+                {error.replace(/^PREMIUM_PLAN:\s*/, "")}
               </p>
               {runbook.external_url && (
                 <a href={runbook.external_url} target="_blank" rel="noopener noreferrer"

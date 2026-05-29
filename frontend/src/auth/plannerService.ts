@@ -104,6 +104,7 @@ async function fetchPlannerPremiumData(
 
   // Use first environment (most orgs have one; multi-env support can be added later)
   const env = instances[0];
+  console.log("[Planner] Dataverse miljø:", env.FriendlyName, "ApiUrl:", env.ApiUrl, "Url:", env.Url);
   const apiUrl = env.ApiUrl.replace(/\/$/, "");
 
   // 2. Get token scoped to this specific Dataverse environment
@@ -128,20 +129,20 @@ async function fetchPlannerPremiumData(
     "_msdyn_projectbucket_value",
   ].join(",");
 
-  const tasksRes = await fetch(
-    `${apiUrl}/api/data/v9.2/msdyn_projecttasks?$filter=_msdyn_project_value eq ${planId}&$select=${taskFields}&$orderby=msdyn_scheduledstart asc`,
-    { headers: dvHeaders }
-  );
+  const tasksUrl = `${apiUrl}/api/data/v9.2/msdyn_projecttasks?$filter=_msdyn_project_value eq ${planId}&$select=${taskFields}&$orderby=msdyn_scheduledstart asc`;
+  console.log("[Planner] Dataverse tasks URL:", tasksUrl);
+  const tasksRes = await fetch(tasksUrl, { headers: dvHeaders });
 
   if (!tasksRes.ok) {
     const errText = await tasksRes.text();
+    console.error("[Planner] Dataverse tasks feil:", tasksRes.status, errText);
     if (tasksRes.status === 403) {
-      throw new Error("Ingen tilgang til Planner Premium-planen i Dataverse. Sjekk at du har lesetilgang til prosjektet.");
+      throw new Error(`PREMIUM_PLAN: Ingen tilgang (403) til ${env.FriendlyName}. Du mangler lesetilgang til prosjektet i Dataverse.`);
     }
     if (tasksRes.status === 404) {
-      throw new Error("PREMIUM_PLAN: Prosjektet ble ikke funnet i Dataverse. Sjekk at plan-URL-en er riktig og at du har tilgang.");
+      throw new Error(`PREMIUM_PLAN: msdyn_projecttasks finnes ikke (404) på ${env.FriendlyName} (${apiUrl}). Svar: ${errText.slice(0, 300)}`);
     }
-    throw new Error(`Dataverse feil (${tasksRes.status}): ${errText}`);
+    throw new Error(`PREMIUM_PLAN: Dataverse feil (${tasksRes.status}) på ${env.FriendlyName}: ${errText.slice(0, 300)}`);
   }
 
   const { value: dvTasks }: { value: DataverseTask[] } = await tasksRes.json();
