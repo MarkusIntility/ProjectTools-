@@ -217,3 +217,43 @@ class ProjectPlanResponse(BaseModel):
     tasks: list[ProjectPlanTaskResponse] = []
 
     model_config = {"from_attributes": True}
+
+
+# Oppgaveliste
+class OppgaveCreate(BaseModel):
+    name: str
+    responsible: str | None = None
+    due_date: datetime | None = None
+    status: str = "not_started"
+    description: str | None = None
+    sort_order: int = 0
+
+
+class OppgaveResponse(OppgaveCreate):
+    id: str
+    liste_id: str
+
+    model_config = {"from_attributes": True}
+
+
+class OppgaveListeCreate(BaseModel):
+    title: str
+    source: str = "own"
+    external_url: str | None = None
+
+
+class OppgaveListeUpdate(BaseModel):
+    title: str
+    external_url: str | None = None
+
+
+class OppgaveListeResponse(BaseModel):
+    id: str
+    project_id: str
+    title: str
+    source: str
+    external_url: str | None = None
+    created_at: datetime
+    oppgaver: list[OppgaveResponse] = []
+
+    model_config = {"from_attributes": True}

@@ -24,6 +24,7 @@ class Project(Base):
     meeting_plans: Mapped[list["MeetingPlan"]] = relationship(back_populates="project", cascade="all, delete-orphan")
     runbooks: Mapped[list["Runbook"]] = relationship(back_populates="project", cascade="all, delete-orphan")
     project_plans: Mapped[list["ProjectPlan"]] = relationship(back_populates="project", cascade="all, delete-orphan")
+    oppgave_lister: Mapped[list["OppgaveListe"]] = relationship(back_populates="project", cascade="all, delete-orphan")
 
 
 class RiskMatrix(Base):
@@ -193,3 +194,34 @@ class RunbookActivity(Base):
     sort_order: Mapped[int] = mapped_column(Integer, default=0)
 
     runbook: Mapped["Runbook"] = relationship(back_populates="activities")
+
+
+class OppgaveListe(Base):
+    __tablename__ = "oppgave_lister"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_uuid)
+    project_id: Mapped[str] = mapped_column(String(36), ForeignKey("projects.id"))
+    title: Mapped[str] = mapped_column(String(200))
+    source: Mapped[str] = mapped_column(String(20), default="own")
+    external_url: Mapped[str | None] = mapped_column(String(500))
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+    project: Mapped["Project"] = relationship(back_populates="oppgave_lister")
+    oppgaver: Mapped[list["Oppgave"]] = relationship(
+        back_populates="liste", cascade="all, delete-orphan", order_by="Oppgave.sort_order"
+    )
+
+
+class Oppgave(Base):
+    __tablename__ = "oppgaver"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_uuid)
+    liste_id: Mapped[str] = mapped_column(String(36), ForeignKey("oppgave_lister.id"))
+    name: Mapped[str] = mapped_column(String(300))
+    responsible: Mapped[str | None] = mapped_column(String(200))
+    due_date: Mapped[datetime | None] = mapped_column(DateTime)
+    status: Mapped[str] = mapped_column(String(20), default="not_started")
+    description: Mapped[str | None] = mapped_column(Text)
+    sort_order: Mapped[int] = mapped_column(Integer, default=0)
+
+    liste: Mapped["OppgaveListe"] = relationship(back_populates="oppgaver")

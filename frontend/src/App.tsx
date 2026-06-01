@@ -6,6 +6,7 @@ import CommunicationPlanPage from "./pages/CommunicationPlanPage";
 import MeetingPlanPage from "./pages/MeetingPlanPage";
 import RunbookPage from "./pages/RunbookPage";
 import ProjectPlanPage from "./pages/ProjectPlanPage";
+import OppgavePage from "./pages/OppgavePage";
 
 export default function App() {
   return (
@@ -18,6 +19,7 @@ export default function App() {
       <Route path="/projects/:projectId/meeting-plan/:planId" element={<MeetingPlanPage />} />
       <Route path="/projects/:projectId/runbook/:runbookId" element={<RunbookPage />} />
       <Route path="/projects/:projectId/project-plan/:planId" element={<ProjectPlanPage />} />
+      <Route path="/projects/:projectId/oppgave/:listeId" element={<OppgavePage />} />
     </Routes>
   );
 }

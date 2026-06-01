@@ -114,6 +114,27 @@ export interface ProjectPlan {
   tasks: ProjectPlanTask[];
 }
 
+export interface Oppgave {
+  id: string;
+  liste_id: string;
+  name: string;
+  responsible: string | null;
+  due_date: string | null;
+  status: "not_started" | "in_progress" | "done";
+  description: string | null;
+  sort_order: number;
+}
+
+export interface OppgaveListe {
+  id: string;
+  project_id: string;
+  title: string;
+  source: "own" | "planner" | "smartsheet";
+  external_url: string | null;
+  created_at: string;
+  oppgaver: Oppgave[];
+}
+
 export interface Runbook {
   id: string;
   project_id: string;
@@ -197,6 +218,22 @@ export const api = {
       request<ProjectPlanTask>(`/projects/${projectId}/project-plans/${planId}/tasks/${taskId}`, { method: "PUT", body: JSON.stringify(data) }),
     deleteTask: (projectId: string, planId: string, taskId: string) =>
       request<void>(`/projects/${projectId}/project-plans/${planId}/tasks/${taskId}`, { method: "DELETE" }),
+  },
+  oppgaveLister: {
+    list: (projectId: string) => request<OppgaveListe[]>(`/projects/${projectId}/oppgave-lister/`),
+    get: (projectId: string, listeId: string) => request<OppgaveListe>(`/projects/${projectId}/oppgave-lister/${listeId}`),
+    create: (projectId: string, data: { title: string; source: string; external_url?: string }) =>
+      request<OppgaveListe>(`/projects/${projectId}/oppgave-lister/`, { method: "POST", body: JSON.stringify(data) }),
+    update: (projectId: string, listeId: string, data: { title: string; external_url?: string | null }) =>
+      request<OppgaveListe>(`/projects/${projectId}/oppgave-lister/${listeId}`, { method: "PUT", body: JSON.stringify(data) }),
+    delete: (projectId: string, listeId: string) =>
+      request<void>(`/projects/${projectId}/oppgave-lister/${listeId}`, { method: "DELETE" }),
+    addOppgave: (projectId: string, listeId: string, data: Omit<Oppgave, "id" | "liste_id" | "sort_order">) =>
+      request<Oppgave>(`/projects/${projectId}/oppgave-lister/${listeId}/oppgaver`, { method: "POST", body: JSON.stringify(data) }),
+    updateOppgave: (projectId: string, listeId: string, oppgaveId: string, data: Omit<Oppgave, "id" | "liste_id">) =>
+      request<Oppgave>(`/projects/${projectId}/oppgave-lister/${listeId}/oppgaver/${oppgaveId}`, { method: "PUT", body: JSON.stringify(data) }),
+    deleteOppgave: (projectId: string, listeId: string, oppgaveId: string) =>
+      request<void>(`/projects/${projectId}/oppgave-lister/${listeId}/oppgaver/${oppgaveId}`, { method: "DELETE" }),
   },
   runbooks: {
     list: (projectId: string) => request<Runbook[]>(`/projects/${projectId}/runbooks/`),

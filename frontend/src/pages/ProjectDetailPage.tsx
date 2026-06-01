@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { Button, Input, Modal } from "@intility/bifrost-react";
-import { api, type Project, type RiskMatrix, type CommunicationPlan, type MeetingPlan, type Runbook, type ProjectPlan } from "../api/client";
+import { api, type Project, type RiskMatrix, type CommunicationPlan, type MeetingPlan, type Runbook, type ProjectPlan, type OppgaveListe } from "../api/client";
 
 const ACCENT_COLORS = [
   "#4C6EF5", "#7950F2", "#E64980", "#F76707",
@@ -25,10 +25,11 @@ const SECTION_CONFIG = {
   comm:        { color: "#1971C2", label: "Kommunikasjonsplaner" },
   meeting:     { color: "#2F9E44", label: "Møteplaner" },
   projectplan: { color: "#0CA678", label: "Prosjektplaner" },
+  oppgave:     { color: "#F59F00", label: "Oppgaver" },
   runbook:     { color: "#7950F2", label: "Runbooks" },
 };
 
-type PlanType = "risk" | "comm" | "meeting" | "projectplan" | "runbook";
+type PlanType = "risk" | "comm" | "meeting" | "projectplan" | "oppgave" | "runbook";
 type PlanItem = { id: string; title: string };
 
 export default function ProjectDetailPage() {
@@ -40,6 +41,14 @@ export default function ProjectDetailPage() {
   const [meetingPlans, setMeetingPlans] = useState<MeetingPlan[]>([]);
   const [runbooks, setRunbooks] = useState<Runbook[]>([]);
   const [projectPlans, setProjectPlans] = useState<ProjectPlan[]>([]);
+  const [oppgaveLister, setOppgaveLister] = useState<OppgaveListe[]>([]);
+
+  // New oppgaveliste modal state
+  const [newOppgaveModal, setNewOppgaveModal] = useState(false);
+  const [olSource, setOlSource] = useState<"own" | "planner" | "smartsheet" | null>(null);
+  const [olTitle, setOlTitle] = useState("");
+  const [olUrl, setOlUrl] = useState("");
+  const [olSaving, setOlSaving] = useState(false);
 
   // New runbook modal state
   const [newRunbookModal, setNewRunbookModal] = useState(false);
@@ -70,13 +79,15 @@ export default function ProjectDetailPage() {
       api.meetingPlans.list(projectId),
       api.runbooks.list(projectId),
       api.projectPlans.list(projectId),
-    ]).then(([p, rm, cp, mp, rb, pp]) => {
+      api.oppgaveLister.list(projectId),
+    ]).then(([p, rm, cp, mp, rb, pp, ol]) => {
       setProject(p);
       setRiskMatrices(rm);
       setCommPlans(cp);
       setMeetingPlans(mp);
       setRunbooks(rb);
       setProjectPlans(pp);
+      setOppgaveLister(ol);
     });
   }, [projectId]);
 
@@ -110,6 +121,9 @@ export default function ProjectDetailPage() {
       } else if (renameTarget.type === "projectplan") {
         const u = await api.projectPlans.update(projectId, renameTarget.id, { title: renameValue });
         setProjectPlans((prev) => prev.map((p) => (p.id === u.id ? u : p)));
+      } else if (renameTarget.type === "oppgave") {
+        const u = await api.oppgaveLister.update(projectId, renameTarget.id, { title: renameValue });
+        setOppgaveLister((prev) => prev.map((p) => (p.id === u.id ? u : p)));
       } else {
         const u = await api.runbooks.update(projectId, renameTarget.id, { title: renameValue });
         setRunbooks((prev) => prev.map((p) => (p.id === u.id ? u : p)));
@@ -133,6 +147,22 @@ export default function ProjectDetailPage() {
       navigate(`/projects/${projectId}/project-plan/${pp.id}`);
     } finally {
       setPpSaving(false);
+    }
+  }
+
+  async function createOppgaveListe() {
+    if (!projectId || !olSource) return;
+    setOlSaving(true);
+    try {
+      const title = olTitle.trim() || (olSource === "own" ? "Ny oppgaveliste" : olSource === "planner" ? "Planner-oppgaver" : "Smartsheet-oppgaver");
+      const ol = await api.oppgaveLister.create(projectId, {
+        title,
+        source: olSource,
+        external_url: olUrl.trim() || undefined,
+      });
+      navigate(`/projects/${projectId}/oppgave/${ol.id}`);
+    } finally {
+      setOlSaving(false);
     }
   }
 
@@ -168,6 +198,9 @@ export default function ProjectDetailPage() {
       } else if (deleteTarget.type === "projectplan") {
         await api.projectPlans.delete(projectId, deleteTarget.id);
         setProjectPlans((prev) => prev.filter((p) => p.id !== deleteTarget.id));
+      } else if (deleteTarget.type === "oppgave") {
+        await api.oppgaveLister.delete(projectId, deleteTarget.id);
+        setOppgaveLister((prev) => prev.filter((p) => p.id !== deleteTarget.id));
       } else {
         await api.runbooks.delete(projectId, deleteTarget.id);
         setRunbooks((prev) => prev.filter((p) => p.id !== deleteTarget.id));
@@ -244,6 +277,18 @@ export default function ProjectDetailPage() {
         }}
       />
       <Section
+        type="oppgave"
+        items={oppgaveLister}
+        onNew={() => { setOlSource(null); setOlTitle(""); setOlUrl(""); setNewOppgaveModal(true); }}
+        onOpen={(id) => navigate(`/projects/${projectId}/oppgave/${id}`)}
+        onRename={(item) => { setRenameTarget({ ...item, type: "oppgave" }); setRenameValue(item.title); }}
+        onDelete={(item) => setDeleteTarget({ ...item, type: "oppgave" })}
+        countLabel={(ol) => {
+          const src = (ol as OppgaveListe).source;
+          return src === "planner" ? "Planner" : src === "smartsheet" ? "Smartsheet" : `${(ol as OppgaveListe).oppgaver.length} oppgaver`;
+        }}
+      />
+      <Section
         type="risk"
         items={riskMatrices}
         onNew={() => createAndNavigate("risk")}
@@ -283,6 +328,45 @@ export default function ProjectDetailPage() {
           return src === "planner" ? "Planner" : src === "smartsheet" ? "Smartsheet" : `${(rb as Runbook).activities.length} aktiviteter`;
         }}
       />
+
+      {/* New oppgaveliste modal */}
+      <Modal isOpen={newOppgaveModal} onRequestClose={() => setNewOppgaveModal(false)} header="Ny oppgaveliste">
+        {olSource === null ? (
+          <div>
+            <p style={{ color: "var(--bfc-base-c-2)", marginBottom: "1.25rem", fontSize: "0.9rem" }}>Velg hvor oppgavelisten skal hentes fra:</p>
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: "0.75rem" }}>
+              {(["planner", "smartsheet", "own"] as const).map((src) => {
+                const cfg = { planner: { color: "#0078D4", label: "Microsoft Planner", sub: "Lenk til eksisterende plan", initial: "P" }, smartsheet: { color: "#00A88E", label: "Smartsheet", sub: "Lenk til eksisterende plan", initial: "S" }, own: { color: "#F59F00", label: "Opprett egen", sub: "Legg til oppgaver manuelt", initial: "+" } }[src];
+                return (
+                  <button key={src} onClick={() => setOlSource(src)}
+                    style={{ border: `2px solid ${cfg.color}40`, borderRadius: 10, padding: "1.25rem 1rem", background: `${cfg.color}08`, cursor: "pointer", textAlign: "center", transition: "border-color 0.15s, background 0.15s" }}
+                    onMouseEnter={(e) => { (e.currentTarget as HTMLButtonElement).style.borderColor = cfg.color; (e.currentTarget as HTMLButtonElement).style.background = `${cfg.color}14`; }}
+                    onMouseLeave={(e) => { (e.currentTarget as HTMLButtonElement).style.borderColor = `${cfg.color}40`; (e.currentTarget as HTMLButtonElement).style.background = `${cfg.color}08`; }}
+                  >
+                    <div style={{ width: 40, height: 40, borderRadius: "50%", background: cfg.color, color: "#fff", display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 700, fontSize: "1.1rem", margin: "0 auto 0.75rem" }}>{cfg.initial}</div>
+                    <div style={{ fontWeight: 600, fontSize: "0.85rem", color: cfg.color, marginBottom: "0.3rem" }}>{cfg.label}</div>
+                    <div style={{ fontSize: "0.75rem", color: "var(--bfc-base-c-2)" }}>{cfg.sub}</div>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        ) : (
+          <div style={{ display: "flex", flexDirection: "column", gap: "1rem" }}>
+            <button onClick={() => setOlSource(null)} style={{ background: "none", border: "none", cursor: "pointer", color: "var(--bfc-base-c-2)", alignSelf: "flex-start", padding: 0, fontSize: "0.9rem" }}>← Tilbake</button>
+            <Input label="Navn på oppgaveliste" value={olTitle} onChange={(e) => setOlTitle(e.target.value)} placeholder={olSource === "own" ? "f.eks. Handlingspunkter" : "f.eks. Oppgaver"} autoFocus />
+            {olSource !== "own" && (
+              <Input label={`URL til ${olSource === "planner" ? "Microsoft Planner" : "Smartsheet"}-planen`} value={olUrl} onChange={(e) => setOlUrl(e.target.value)} placeholder="https://..." />
+            )}
+            <div style={{ display: "flex", justifyContent: "flex-end", gap: "0.5rem" }}>
+              <Button onClick={() => setNewOppgaveModal(false)}>Avbryt</Button>
+              <Button variant="filled" onClick={createOppgaveListe} state={olSaving ? "inactive" : "default"}>
+                {olSaving ? "Oppretter..." : olSource === "own" ? "Opprett og åpne" : "Lagre"}
+              </Button>
+            </div>
+          </div>
+        )}
+      </Modal>
 
       {/* New runbook modal */}
       <Modal isOpen={newRunbookModal} onRequestClose={() => setNewRunbookModal(false)} header="Ny runbook">
