@@ -545,6 +545,7 @@ function PlannerView({ liste, srcCfg, account, data, loading, error, msalReady, 
 // ─── Flat Planner task list ───────────────────────────────────────────────────
 
 function FlatPlannerList({ data }: { data: PlannerData }) {
+  const assigneeMap = data.assigneeMap ?? {};
   const [filter, setFilter] = useState<Filter>("all");
 
   const allTasks = data.tasks;
@@ -632,6 +633,16 @@ function FlatPlannerList({ data }: { data: PlannerData }) {
               }}>
                 {task.title}
               </span>
+              {(() => {
+                const assignees = Object.keys(task.assignments ?? {})
+                  .map((id) => assigneeMap[id])
+                  .filter(Boolean);
+                return assignees.length > 0 ? (
+                  <span style={{ fontSize: "0.75rem", padding: "2px 8px", borderRadius: 20, background: "var(--bfc-base-dimmed)", color: "var(--bfc-base-c-2)", flexShrink: 0, whiteSpace: "nowrap" }}>
+                    {assignees.join(", ")}
+                  </span>
+                ) : null;
+              })()}
               {task.dueDateTime && (
                 <span style={{ fontSize: "0.75rem", color: "var(--bfc-base-c-3)", flexShrink: 0, whiteSpace: "nowrap" }}>
                   {new Date(task.dueDateTime).toLocaleDateString("nb-NO", { day: "numeric", month: "short" })}

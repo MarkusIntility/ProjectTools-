@@ -27,6 +27,7 @@ export interface PlannerData {
   buckets: PlannerBucket[];
   tasks: PlannerTask[];
   categoryDescriptions?: Record<string, string | null>;
+  assigneeMap?: Record<string, string>; // userId → displayName
 }
 
 // ─── Dataverse types ──────────────────────────────────────────────────────────
@@ -68,6 +69,26 @@ async function graphRequest<T>(token: string, path: string, apiVersion = "v1.0")
     throw new Error(`Graph API feil (${res.status}): ${err}`);
   }
   return res.json();
+}
+
+async function resolveAssignees(
+  token: string,
+  tasks: (PlannerTask & { appliedCategories?: Record<string, boolean> })[]
+): Promise<Record<string, string>> {
+  const ids = [...new Set(tasks.flatMap((t) => Object.keys(t.assignments ?? {})))];
+  if (ids.length === 0) return {};
+  const map: Record<string, string> = {};
+  await Promise.all(
+    ids.map(async (id) => {
+      try {
+        const user = await graphRequest<{ displayName: string }>(token, `/users/${id}?$select=displayName`);
+        map[id] = user.displayName;
+      } catch {
+        // leave entry absent — caller falls back to showing nothing
+      }
+    })
+  );
+  return map;
 }
 
 async function acquireToken(
@@ -303,7 +324,8 @@ export async function fetchPlannerData(
         .map(([k]) => catDesc[k])
         .filter((name): name is string => Boolean(name)),
     }));
-    return { buckets: bucketsData.value, tasks, categoryDescriptions: catDesc };
+    const assigneeMap = await resolveAssignees(token, tasksData.value);
+    return { buckets: bucketsData.value, tasks, categoryDescriptions: catDesc, assigneeMap };
   }
 
   if (v1Check.status === 404) {
@@ -326,7 +348,8 @@ export async function fetchPlannerData(
           .map(([k]) => catDesc[k])
           .filter((name): name is string => Boolean(name)),
       }));
-      return { buckets: bucketsData.value, tasks, categoryDescriptions: catDesc };
+      const assigneeMap = await resolveAssignees(token, tasksData.value);
+      return { buckets: bucketsData.value, tasks, categoryDescriptions: catDesc, assigneeMap };
     }
 
     // Both Graph versions 404 — Premium plan stored in Dataverse
