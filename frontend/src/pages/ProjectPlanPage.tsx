@@ -28,6 +28,28 @@ const EMPTY_FORM = {
 
 type FormState = typeof EMPTY_FORM;
 
+// ─── Gantt types ──────────────────────────────────────────────────────────────
+
+interface GanttPhase {
+  name: string;
+  start: Date;
+  end: Date;
+  color: string;
+  taskCount: number;
+  done: number;
+}
+
+const GANTT_COLORS = [
+  "#7950F2",
+  "#0CA678",
+  "#F59F00",
+  "#2F9E44",
+  "#1971C2",
+  "#C2255C",
+  "#E8590C",
+  "#6741D9",
+];
+
 // ─── Main page ────────────────────────────────────────────────────────────────
 
 export default function ProjectPlanPage() {
@@ -60,6 +82,7 @@ export default function ProjectPlanPage() {
   const [existingTemplates, setExistingTemplates] = useState<Template[]>([]);
   const [selectedExistingId, setSelectedExistingId] = useState("");
   const [templateSaving, setTemplateSaving] = useState(false);
+  const [view, setView] = useState<"list" | "gantt">("list");
 
   useEffect(() => {
     if (!projectId || !planId) return;
@@ -252,6 +275,29 @@ export default function ProjectPlanPage() {
         </div>
       </div>
 
+      {/* Tab switcher */}
+      {plan.source !== "smartsheet" && (
+        <div style={{ display: "flex", borderBottom: "2px solid var(--bfc-base-dimmed)", marginBottom: "1.5rem" }}>
+          {(["list", "gantt"] as const).map((v) => (
+            <button
+              key={v}
+              onClick={() => setView(v)}
+              style={{
+                background: "none", border: "none", cursor: "pointer",
+                padding: "0.5rem 1.25rem", fontSize: "0.9rem",
+                fontWeight: view === v ? 600 : 400,
+                color: view === v ? "#7950F2" : "var(--bfc-base-c-2)",
+                borderBottom: `2px solid ${view === v ? "#7950F2" : "transparent"}`,
+                marginBottom: -2,
+                transition: "all 0.15s",
+              }}
+            >
+              {v === "list" ? "Oppgaver" : "Gantt"}
+            </button>
+          ))}
+        </div>
+      )}
+
       {/* Planner view */}
       {plan.source === "planner" && (
         <PlannerView
@@ -265,6 +311,7 @@ export default function ProjectPlanPage() {
           error={plannerError}
           onLogin={loginPlanner}
           onRefresh={refreshPlanner}
+          view={view}
         />
       )}
 
@@ -274,7 +321,7 @@ export default function ProjectPlanPage() {
       )}
 
       {/* Own plan */}
-      {plan.source === "own" && (
+      {plan.source === "own" && view === "list" && (
         <OwnPlanView
           plan={plan}
           onAdd={openAdd}
@@ -282,6 +329,9 @@ export default function ProjectPlanPage() {
           onDelete={setDeleteTarget}
           onUpdateProgress={updateTaskProgress}
         />
+      )}
+      {plan.source === "own" && view === "gantt" && (
+        <GanttView phases={extractOwnGanttPhases(plan.tasks)} />
       )}
 
       {/* Template modal */}
@@ -740,7 +790,7 @@ function ExternalLinkCard({ plan, srcCfg }: { plan: ProjectPlan; srcCfg: { label
 // ─── Planner view ─────────────────────────────────────────────────────────────
 
 function PlannerView({
-  plan, srcCfg, isMsalConfigured: configured, msalReady, account, data, loading, error, onLogin, onRefresh,
+  plan, srcCfg, isMsalConfigured: configured, msalReady, account, data, loading, error, onLogin, onRefresh, view,
 }: {
   plan: ProjectPlan;
   srcCfg: { label: string; color: string };
@@ -752,6 +802,7 @@ function PlannerView({
   error: string | null;
   onLogin: () => void;
   onRefresh: () => void;
+  view: "list" | "gantt";
 }) {
   const planId = plan.external_url ? parsePlanId(plan.external_url) : null;
 
@@ -824,7 +875,11 @@ function PlannerView({
 
       {loading && <div style={{ textAlign: "center", padding: "3rem", color: "var(--bfc-base-c-2)" }}>Henter oppgaver fra Microsoft Planner…</div>}
 
-      {data && !loading && <PlannerTaskGrid data={data} />}
+      {data && !loading && (
+        view === "gantt"
+          ? <GanttView phases={extractPlannerGanttPhases(data)} />
+          : <PlannerTaskGrid data={data} />
+      )}
     </div>
   );
 }
@@ -1135,6 +1190,253 @@ function PlannerTaskRow({ task, fagomrade }: { task: PlannerTask; fagomrade?: st
         <div style={{ height: 4, borderRadius: 2, background: "var(--bfc-base-dimmed)", overflow: "hidden" }}>
           <div style={{ width: `${pct}%`, height: "100%", background: color, borderRadius: 2 }} />
         </div>
+      </div>
+    </div>
+  );
+}
+
+// ─── Gantt helpers ────────────────────────────────────────────────────────────
+
+function extractOwnGanttPhases(tasks: ProjectPlanTask[]): GanttPhase[] {
+  const buckets = [...new Set(tasks.map((t) => t.bucket ?? ""))];
+  const phases: GanttPhase[] = [];
+  buckets.forEach((bucket, i) => {
+    const bTasks = tasks.filter((t) => (t.bucket ?? "") === bucket);
+    const starts = bTasks.filter((t) => t.start_date).map((t) => new Date(t.start_date!).getTime());
+    const ends = bTasks.filter((t) => t.end_date).map((t) => new Date(t.end_date!).getTime());
+    if (starts.length === 0 && ends.length === 0) return;
+    const minStart = starts.length > 0 ? Math.min(...starts) : Math.min(...ends);
+    const maxEnd = ends.length > 0 ? Math.max(...ends) : Math.max(...starts);
+    phases.push({
+      name: bucket || "Uten fase",
+      start: new Date(minStart),
+      end: new Date(maxEnd),
+      color: GANTT_COLORS[i % GANTT_COLORS.length],
+      taskCount: bTasks.length,
+      done: bTasks.filter((t) => t.percent_complete === 100).length,
+    });
+  });
+  return phases;
+}
+
+function extractPlannerGanttPhases(data: PlannerData): GanttPhase[] {
+  const isHierarchical = data.tasks.some((t) => (t.outlineLevel ?? 1) > 1);
+  const phases: GanttPhase[] = [];
+
+  if (isHierarchical) {
+    const l1Tasks = data.tasks.filter((t) => (t.outlineLevel ?? 1) === 1);
+    const l2ByL1: Record<string, PlannerTask[]> = {};
+    for (const t of data.tasks.filter((t) => (t.outlineLevel ?? 1) === 2)) {
+      const key = t.parentTaskId ?? "__orphan__";
+      if (!l2ByL1[key]) l2ByL1[key] = [];
+      l2ByL1[key].push(t);
+    }
+    l1Tasks.forEach((l1, i) => {
+      const children = l2ByL1[l1.id] ?? [];
+      const allT = [l1, ...children];
+      const starts = allT.filter((t) => t.startDateTime).map((t) => new Date(t.startDateTime!).getTime());
+      const ends = allT.filter((t) => t.dueDateTime).map((t) => new Date(t.dueDateTime!).getTime());
+      if (starts.length === 0 && ends.length === 0) return;
+      const minStart = starts.length > 0 ? Math.min(...starts) : Math.min(...ends);
+      const maxEnd = ends.length > 0 ? Math.max(...ends) : Math.max(...starts);
+      phases.push({
+        name: l1.title,
+        start: new Date(minStart),
+        end: new Date(maxEnd),
+        color: GANTT_COLORS[i % GANTT_COLORS.length],
+        taskCount: children.length,
+        done: children.filter((t) => t.percentComplete === 100).length,
+      });
+    });
+  } else {
+    data.buckets.forEach((bucket, i) => {
+      const bTasks = data.tasks.filter((t) => t.bucketId === bucket.id);
+      const starts = bTasks.filter((t) => t.startDateTime).map((t) => new Date(t.startDateTime!).getTime());
+      const ends = bTasks.filter((t) => t.dueDateTime).map((t) => new Date(t.dueDateTime!).getTime());
+      if (starts.length === 0 && ends.length === 0) return;
+      const minStart = starts.length > 0 ? Math.min(...starts) : Math.min(...ends);
+      const maxEnd = ends.length > 0 ? Math.max(...ends) : Math.max(...starts);
+      phases.push({
+        name: bucket.name,
+        start: new Date(minStart),
+        end: new Date(maxEnd),
+        color: GANTT_COLORS[i % GANTT_COLORS.length],
+        taskCount: bTasks.length,
+        done: bTasks.filter((t) => t.percentComplete === 100).length,
+      });
+    });
+  }
+  return phases;
+}
+
+// ─── Gantt view ───────────────────────────────────────────────────────────────
+
+function GanttView({ phases }: { phases: GanttPhase[] }) {
+  if (phases.length === 0) {
+    return (
+      <div style={{ textAlign: "center", padding: "3rem", border: "2px dashed var(--bfc-base-dimmed)", borderRadius: 8, color: "var(--bfc-base-c-2)" }}>
+        <div style={{ fontSize: "2rem", marginBottom: "0.75rem" }}>📅</div>
+        <p style={{ margin: "0 0 0.5rem" }}>Ingen oppgaver har dato satt.</p>
+        <p style={{ margin: 0, fontSize: "0.85rem" }}>Legg til start- og sluttdato på oppgavene for å se Gantt-visning.</p>
+      </div>
+    );
+  }
+
+  const MS_PER_DAY = 86_400_000;
+  const pad = 2 * MS_PER_DAY;
+  const rangeStartMs = Math.min(...phases.map((p) => p.start.getTime())) - pad;
+  const rangeEndMs = Math.max(...phases.map((p) => p.end.getTime())) + pad;
+  const totalMs = rangeEndMs - rangeStartMs;
+  const totalDays = Math.ceil(totalMs / MS_PER_DAY);
+  const totalWeeks = Math.ceil(totalDays / 7);
+
+  function toPct(d: Date): number {
+    return ((d.getTime() - rangeStartMs) / totalMs) * 100;
+  }
+
+  // Generate weekly Monday ticks within the range
+  const ticks: Date[] = [];
+  const seed = new Date(rangeStartMs);
+  const dayOfWeek = seed.getDay();
+  const daysToMon = dayOfWeek === 0 ? 1 : dayOfWeek === 1 ? 0 : 8 - dayOfWeek;
+  seed.setDate(seed.getDate() + daysToMon);
+  let tick = new Date(seed);
+  while (tick.getTime() <= rangeEndMs) {
+    ticks.push(new Date(tick));
+    tick.setDate(tick.getDate() + 7);
+  }
+
+  const fmt = (d: Date) => d.toLocaleDateString("nb-NO", { day: "numeric", month: "short" });
+  const daysBetween = (a: Date, b: Date) => Math.max(1, Math.ceil((b.getTime() - a.getTime()) / MS_PER_DAY));
+
+  return (
+    <div>
+      {/* Header */}
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "1.25rem" }}>
+        <h3 className="bf-h4" style={{ margin: 0 }}>Tidslinje</h3>
+        <span style={{ fontSize: "0.8rem", color: "var(--bfc-base-c-2)" }}>
+          {fmt(phases.reduce((a, p) => p.start < a ? p.start : a, phases[0].start))} – {fmt(phases.reduce((a, p) => p.end > a ? p.end : a, phases[0].end))} · {totalWeeks} {totalWeeks === 1 ? "uke" : "uker"}
+        </span>
+      </div>
+
+      {/* Timeline */}
+      <div style={{ overflowX: "auto", borderRadius: 10, border: "1px solid var(--bfc-base-dimmed)", background: "var(--bfc-base-3)", padding: "1rem 1rem 0.75rem" }}>
+        <div style={{ minWidth: 700 }}>
+          {/* Date axis row */}
+          <div style={{ display: "flex" }}>
+            <div style={{ width: 130, flexShrink: 0 }} />
+            <div style={{ flex: 1, position: "relative", height: 20, marginBottom: "0.75rem" }}>
+              {ticks.map((t, i) => (
+                <span key={i} style={{
+                  position: "absolute",
+                  left: `${toPct(t)}%`,
+                  transform: "translateX(-50%)",
+                  fontSize: "0.72rem",
+                  color: "var(--bfc-base-c-2)",
+                  whiteSpace: "nowrap",
+                  userSelect: "none",
+                }}>
+                  {fmt(t)}
+                </span>
+              ))}
+            </div>
+          </div>
+
+          {/* Phase rows */}
+          {phases.map((phase) => {
+            const leftPct = toPct(phase.start);
+            const widthPct = Math.max(1.5, toPct(phase.end) - leftPct);
+            return (
+              <div key={phase.name} style={{ display: "flex", alignItems: "center", marginBottom: "0.5rem" }}>
+                {/* Phase label */}
+                <div style={{
+                  width: 130, flexShrink: 0,
+                  fontSize: "0.82rem", fontWeight: 600,
+                  color: "var(--bfc-base-c-1)",
+                  paddingRight: "0.75rem",
+                  overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
+                }}>
+                  {phase.name}
+                </div>
+                {/* Bar track */}
+                <div style={{ flex: 1, position: "relative", height: 36 }}>
+                  {/* Grid lines */}
+                  {ticks.map((t, i) => (
+                    <div key={i} style={{
+                      position: "absolute",
+                      left: `${toPct(t)}%`,
+                      top: 0, bottom: 0, width: 1,
+                      background: "var(--bfc-base-dimmed)",
+                      pointerEvents: "none",
+                    }} />
+                  ))}
+                  {/* Bar */}
+                  <div style={{
+                    position: "absolute",
+                    left: `${leftPct}%`,
+                    width: `${widthPct}%`,
+                    top: 3, bottom: 3,
+                    borderRadius: 6,
+                    background: `${phase.color}20`,
+                    border: `2px solid ${phase.color}`,
+                    display: "flex", alignItems: "center",
+                    paddingLeft: "0.5rem",
+                    overflow: "hidden",
+                    zIndex: 1,
+                  }}>
+                    <span style={{ fontSize: "0.71rem", fontWeight: 600, color: phase.color, whiteSpace: "nowrap" }}>
+                      {fmt(phase.start)} → {fmt(phase.end)}
+                    </span>
+                  </div>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+
+      {/* Summary cards */}
+      <div style={{
+        display: "grid",
+        gridTemplateColumns: `repeat(${Math.min(phases.length, 4)}, 1fr)`,
+        gap: "0.75rem",
+        marginTop: "1.5rem",
+      }}>
+        {phases.map((phase) => {
+          const days = daysBetween(phase.start, phase.end);
+          const weeks = Math.floor(days / 7);
+          const rem = days % 7;
+          const durationStr = weeks > 0
+            ? `${weeks} ${weeks === 1 ? "uke" : "uker"}${rem > 0 ? `, ${rem} dager` : ""}`
+            : `${days} dager`;
+          return (
+            <div key={phase.name} style={{
+              borderRadius: 10,
+              border: `1px solid ${phase.color}40`,
+              borderTop: `4px solid ${phase.color}`,
+              padding: "1rem",
+              background: "var(--bfc-base-3)",
+            }}>
+              <div style={{ fontSize: "0.68rem", fontWeight: 700, letterSpacing: "0.08em", textTransform: "uppercase", color: phase.color, marginBottom: "0.5rem" }}>
+                {phase.name}
+              </div>
+              <div style={{ fontSize: "1.5rem", fontWeight: 700, color: "var(--bfc-base-c-1)", lineHeight: 1.2 }}>
+                {days} dager
+              </div>
+              <div style={{ fontSize: "0.8rem", color: "var(--bfc-base-c-2)", marginTop: "0.2rem", marginBottom: "0.5rem" }}>
+                {durationStr}
+              </div>
+              <div style={{ fontSize: "0.8rem", color: "var(--bfc-base-c-2)" }}>
+                {fmt(phase.start)}<br />→ {fmt(phase.end)}
+              </div>
+              {phase.taskCount > 0 && (
+                <div style={{ fontSize: "0.73rem", color: "var(--bfc-base-c-3)", marginTop: "0.5rem" }}>
+                  {phase.done}/{phase.taskCount} ferdig
+                </div>
+              )}
+            </div>
+          );
+        })}
       </div>
     </div>
   );
