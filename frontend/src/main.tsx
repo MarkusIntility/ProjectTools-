@@ -6,7 +6,7 @@ import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 import { BrowserRouter } from "react-router-dom";
 import App from "./App";
-import { msalInstance, isMsalConfigured } from "./auth/msalConfig";
+import { msalInstance, isMsalConfigured, APP_SCOPES } from "./auth/msalConfig";
 
 async function bootstrap() {
   if (isMsalConfigured) {
@@ -29,6 +29,13 @@ async function bootstrap() {
           return; // Don't render React — a new page load is starting
         }
         // Auth failed, was cancelled, or returnUrl is stale — fall through
+      }
+
+      // Require Entra ID login — redirect if no account in cache
+      if (msalInstance.getAllAccounts().length === 0) {
+        sessionStorage.setItem("app.returnUrl", window.location.href);
+        await msalInstance.loginRedirect({ scopes: APP_SCOPES });
+        return;
       }
     } catch (err) {
       sessionStorage.removeItem("app.returnUrl");
