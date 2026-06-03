@@ -1269,6 +1269,23 @@ function extractPlannerGanttPhases(data: PlannerData): GanttPhase[] {
   return phases;
 }
 
+// ─── Gantt phase sorting ──────────────────────────────────────────────────────
+
+const PHASE_ORDER_MAP: [RegExp, number][] = [
+  [/kartlegg|mapping|analyse|survey/i,           10],
+  [/gjennomfør|implementer|etabler|rollout/i,    20],
+  [/test|verifi|qa|validering/i,                 30],
+  [/etter|post[\s\-]*go|after[\s\-]*go/i,        50], // must come before go-live check
+  [/go[\s\-. ]*live|golive|launch/i,             40],
+];
+
+function phasePriority(name: string): number {
+  for (const [rx, order] of PHASE_ORDER_MAP) {
+    if (rx.test(name)) return order;
+  }
+  return 99;
+}
+
 // ─── Gantt view ───────────────────────────────────────────────────────────────
 
 function GanttView({ phases }: { phases: GanttPhase[] }) {
@@ -1282,10 +1299,15 @@ function GanttView({ phases }: { phases: GanttPhase[] }) {
     );
   }
 
+  // Sort phases by defined project phase order, reassign colors to match position
+  const sorted = [...phases]
+    .sort((a, b) => phasePriority(a.name) - phasePriority(b.name))
+    .map((p, i) => ({ ...p, color: GANTT_COLORS[i % GANTT_COLORS.length] }));
+
   const MS_PER_DAY = 86_400_000;
   const pad = 2 * MS_PER_DAY;
-  const rangeStartMs = Math.min(...phases.map((p) => p.start.getTime())) - pad;
-  const rangeEndMs = Math.max(...phases.map((p) => p.end.getTime())) + pad;
+  const rangeStartMs = Math.min(...sorted.map((p) => p.start.getTime())) - pad;
+  const rangeEndMs = Math.max(...sorted.map((p) => p.end.getTime())) + pad;
   const totalMs = rangeEndMs - rangeStartMs;
   const totalDays = Math.ceil(totalMs / MS_PER_DAY);
   const totalWeeks = Math.ceil(totalDays / 7);
@@ -1294,17 +1316,25 @@ function GanttView({ phases }: { phases: GanttPhase[] }) {
     return ((d.getTime() - rangeStartMs) / totalMs) * 100;
   }
 
-  // Generate weekly Monday ticks within the range
+  // Adaptive tick interval: fewer ticks for longer ranges to avoid label crowding
+  const tickIntervalDays = totalDays <= 42 ? 7 : totalDays <= 98 ? 14 : 28;
+
   const ticks: Date[] = [];
   const seed = new Date(rangeStartMs);
-  const dayOfWeek = seed.getDay();
-  const daysToMon = dayOfWeek === 0 ? 1 : dayOfWeek === 1 ? 0 : 8 - dayOfWeek;
-  seed.setDate(seed.getDate() + daysToMon);
+  if (tickIntervalDays === 7) {
+    // Align to nearest Monday
+    const dow = seed.getDay();
+    seed.setDate(seed.getDate() + (dow === 1 ? 7 : (8 - dow) % 7 || 7));
+  } else {
+    seed.setDate(seed.getDate() + tickIntervalDays);
+  }
   let tick = new Date(seed);
   while (tick.getTime() <= rangeEndMs) {
     ticks.push(new Date(tick));
-    tick.setDate(tick.getDate() + 7);
+    tick.setDate(tick.getDate() + tickIntervalDays);
   }
+
+  const minW = Math.max(700, ticks.length * 95 + 140);
 
   const fmt = (d: Date) => d.toLocaleDateString("nb-NO", { day: "numeric", month: "short" });
   const daysBetween = (a: Date, b: Date) => Math.max(1, Math.ceil((b.getTime() - a.getTime()) / MS_PER_DAY));
@@ -1315,23 +1345,23 @@ function GanttView({ phases }: { phases: GanttPhase[] }) {
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "1.25rem" }}>
         <h3 className="bf-h4" style={{ margin: 0 }}>Tidslinje</h3>
         <span style={{ fontSize: "0.8rem", color: "var(--bfc-base-c-2)" }}>
-          {fmt(phases.reduce((a, p) => p.start < a ? p.start : a, phases[0].start))} – {fmt(phases.reduce((a, p) => p.end > a ? p.end : a, phases[0].end))} · {totalWeeks} {totalWeeks === 1 ? "uke" : "uker"}
+          {fmt(sorted.reduce((a, p) => p.start < a ? p.start : a, sorted[0].start))} – {fmt(sorted.reduce((a, p) => p.end > a ? p.end : a, sorted[0].end))} · {totalWeeks} {totalWeeks === 1 ? "uke" : "uker"}
         </span>
       </div>
 
       {/* Timeline */}
       <div style={{ overflowX: "auto", borderRadius: 10, border: "1px solid var(--bfc-base-dimmed)", background: "var(--bfc-base-3)", padding: "1rem 1rem 0.75rem" }}>
-        <div style={{ minWidth: 700 }}>
+        <div style={{ minWidth: minW }}>
           {/* Date axis row */}
           <div style={{ display: "flex" }}>
-            <div style={{ width: 130, flexShrink: 0 }} />
-            <div style={{ flex: 1, position: "relative", height: 20, marginBottom: "0.75rem" }}>
+            <div style={{ width: 140, flexShrink: 0 }} />
+            <div style={{ flex: 1, position: "relative", height: 22, marginBottom: "0.75rem" }}>
               {ticks.map((t, i) => (
                 <span key={i} style={{
                   position: "absolute",
                   left: `${toPct(t)}%`,
                   transform: "translateX(-50%)",
-                  fontSize: "0.72rem",
+                  fontSize: "0.75rem",
                   color: "var(--bfc-base-c-2)",
                   whiteSpace: "nowrap",
                   userSelect: "none",
@@ -1343,14 +1373,14 @@ function GanttView({ phases }: { phases: GanttPhase[] }) {
           </div>
 
           {/* Phase rows */}
-          {phases.map((phase) => {
+          {sorted.map((phase) => {
             const leftPct = toPct(phase.start);
             const widthPct = Math.max(1.5, toPct(phase.end) - leftPct);
             return (
               <div key={phase.name} style={{ display: "flex", alignItems: "center", marginBottom: "0.5rem" }}>
                 {/* Phase label */}
                 <div style={{
-                  width: 130, flexShrink: 0,
+                  width: 140, flexShrink: 0,
                   fontSize: "0.82rem", fontWeight: 600,
                   color: "var(--bfc-base-c-1)",
                   paddingRight: "0.75rem",
@@ -1398,11 +1428,11 @@ function GanttView({ phases }: { phases: GanttPhase[] }) {
       {/* Summary cards */}
       <div style={{
         display: "grid",
-        gridTemplateColumns: `repeat(${Math.min(phases.length, 4)}, 1fr)`,
+        gridTemplateColumns: `repeat(${Math.min(sorted.length, 4)}, 1fr)`,
         gap: "0.75rem",
         marginTop: "1.5rem",
       }}>
-        {phases.map((phase) => {
+        {sorted.map((phase) => {
           const days = daysBetween(phase.start, phase.end);
           const weeks = Math.floor(days / 7);
           const rem = days % 7;
