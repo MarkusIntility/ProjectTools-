@@ -44,7 +44,7 @@ function TopBar() {
 
 export default function App() {
   return (
-    <div style={{ minHeight: "100vh", display: "flex", flexDirection: "column" }}>
+    <>
       <TopBar />
       <Routes>
         <Route path="/" element={<Navigate to="/projects" replace />} />
@@ -57,6 +57,6 @@ export default function App() {
         <Route path="/projects/:projectId/project-plan/:planId" element={<ProjectPlanPage />} />
         <Route path="/projects/:projectId/oppgave/:listeId" element={<OppgavePage />} />
       </Routes>
-    </div>
+    </>
   );
 }
