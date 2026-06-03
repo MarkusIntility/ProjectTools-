@@ -1,7 +1,7 @@
 import { useEffect, useState, useCallback } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { Button, Input, Modal } from "@intility/bifrost-react";
-import { api, type OppgaveListe, type Oppgave } from "../api/client";
+import { api, type OppgaveListe, type Oppgave, type Template } from "../api/client";
 import { isMsalConfigured, msalInstance, PLANNER_SCOPES } from "../auth/msalConfig";
 import { fetchPlannerData, parsePlanId, taskStatus, type PlannerData, type PlannerTask } from "../auth/plannerService";
 import type { AccountInfo } from "@azure/msal-browser";
@@ -57,6 +57,13 @@ export default function OppgavePage() {
   const [deleting, setDeleting] = useState(false);
 
   const [editListeModal, setEditListeModal] = useState(false);
+
+  const [templateModal, setTemplateModal] = useState(false);
+  const [templateMode, setTemplateMode] = useState<"new" | "existing">("new");
+  const [templateName, setTemplateName] = useState("");
+  const [existingTemplates, setExistingTemplates] = useState<Template[]>([]);
+  const [selectedExistingId, setSelectedExistingId] = useState("");
+  const [templateSaving, setTemplateSaving] = useState(false);
   const [listeTitle, setListeTitle] = useState("");
   const [listeUrl, setListeUrl] = useState("");
 
@@ -176,6 +183,31 @@ export default function OppgavePage() {
     setEditListeModal(false);
   }
 
+  async function openTemplateModal() {
+    const ts = await api.templates.list("oppgave_liste");
+    setExistingTemplates(ts);
+    setTemplateMode("new");
+    setTemplateName(liste?.title ?? "");
+    setSelectedExistingId(ts[0]?.id ?? "");
+    setTemplateModal(true);
+  }
+
+  async function saveAsTemplate() {
+    if (!liste) return;
+    setTemplateSaving(true);
+    try {
+      const data = JSON.stringify({ oppgaver: liste.oppgaver.map(({ name, responsible, due_date, status, description }) => ({ name, responsible, due_date, status, description })) });
+      if (templateMode === "new") {
+        await api.templates.create({ name: templateName.trim() || liste.title, type: "oppgave_liste", data });
+      } else {
+        await api.templates.update(selectedExistingId, { name: existingTemplates.find(t => t.id === selectedExistingId)?.name ?? templateName, data });
+      }
+      setTemplateModal(false);
+    } finally {
+      setTemplateSaving(false);
+    }
+  }
+
   if (!liste) return <div style={{ padding: "2rem" }}>Laster...</div>;
 
   const srcCfg = SOURCE_CONFIG[liste.source];
@@ -208,7 +240,10 @@ export default function OppgavePage() {
             Rediger
           </Button>
           {liste.source === "own" && (
-            <Button variant="filled" onClick={openAdd}>+ Legg til oppgave</Button>
+            <>
+              <Button variant="outline" onClick={openTemplateModal}>Lagre som mal</Button>
+              <Button variant="filled" onClick={openAdd}>+ Legg til oppgave</Button>
+            </>
           )}
         </div>
       </div>
@@ -248,6 +283,40 @@ export default function OppgavePage() {
       )}
 
       {/* Task form modal */}
+      <Modal isOpen={templateModal} onRequestClose={() => setTemplateModal(false)} header="Lagre som mal">
+        <div style={{ display: "flex", flexDirection: "column", gap: "1rem" }}>
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "0.5rem" }}>
+            {(["new", "existing"] as const).map((mode) => (
+              <button key={mode} onClick={() => setTemplateMode(mode)}
+                style={{ padding: "0.75rem", borderRadius: 8, border: `2px solid ${templateMode === mode ? "#F59F00" : "var(--bfc-base-dimmed)"}`, background: templateMode === mode ? "#F59F0018" : "var(--bfc-base-3)", cursor: "pointer", fontWeight: 600, fontSize: "0.9rem", color: templateMode === mode ? "#F59F00" : "var(--bfc-base-c-1)", transition: "all 0.15s" }}>
+                {mode === "new" ? "Ny mal" : "Oppdater eksisterende"}
+              </button>
+            ))}
+          </div>
+          {templateMode === "new" ? (
+            <Input label="Navn på malen" value={templateName} onChange={(e) => setTemplateName(e.target.value)} placeholder="f.eks. Standard oppgaveliste" autoFocus />
+          ) : (
+            <div>
+              <label className="bf-label">Velg mal å oppdatere</label>
+              {existingTemplates.length === 0 ? (
+                <p style={{ color: "var(--bfc-base-c-2)", fontSize: "0.9rem" }}>Ingen eksisterende maler</p>
+              ) : (
+                <select value={selectedExistingId} onChange={(e) => setSelectedExistingId(e.target.value)} style={{ width: "100%", padding: "0.5rem", borderRadius: 4, border: "1px solid var(--bfc-base-dimmed)", marginTop: 4 }}>
+                  {existingTemplates.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}
+                </select>
+              )}
+            </div>
+          )}
+          <p style={{ margin: 0, color: "var(--bfc-base-c-2)", fontSize: "0.85rem" }}>{liste.oppgaver.length} oppgaver vil bli lagret i malen.</p>
+          <div style={{ display: "flex", justifyContent: "flex-end", gap: "0.5rem" }}>
+            <Button onClick={() => setTemplateModal(false)}>Avbryt</Button>
+            <Button variant="filled" onClick={saveAsTemplate} state={templateSaving || (templateMode === "existing" && !selectedExistingId) ? "inactive" : "default"}>
+              {templateSaving ? "Lagrer..." : "Lagre mal"}
+            </Button>
+          </div>
+        </div>
+      </Modal>
+
       <Modal isOpen={taskModal} onRequestClose={() => setTaskModal(false)} header={editTarget ? "Rediger oppgave" : "Ny oppgave"}>
         <div style={{ display: "flex", flexDirection: "column", gap: "0.85rem" }}>
           <Input label="Oppgavenavn *" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} autoFocus />

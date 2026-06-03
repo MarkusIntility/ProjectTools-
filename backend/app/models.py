@@ -225,3 +225,14 @@ class Oppgave(Base):
     sort_order: Mapped[int] = mapped_column(Integer, default=0)
 
     liste: Mapped["OppgaveListe"] = relationship(back_populates="oppgaver")
+
+
+class Template(Base):
+    __tablename__ = "templates"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_uuid)
+    name: Mapped[str] = mapped_column(String(200))
+    type: Mapped[str] = mapped_column(String(50))  # risk_matrix | communication_plan | meeting_plan | project_plan | oppgave_liste | runbook
+    data: Mapped[str] = mapped_column(Text)  # JSON blob
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)

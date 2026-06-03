@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { useParams, useNavigate } from "react-router-dom";
-import { Button, Input } from "@intility/bifrost-react";
-import { api, type RiskMatrix, type RiskItem } from "../api/client";
+import { Button, Input, Modal } from "@intility/bifrost-react";
+import { api, type RiskMatrix, type RiskItem, type Template } from "../api/client";
 
 const RISK_COLORS: Record<string, string> = {
   low: "#4caf50",
@@ -50,6 +50,13 @@ export default function RiskMatrixPage() {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
 
+  const [templateModal, setTemplateModal] = useState(false);
+  const [templateMode, setTemplateMode] = useState<"new" | "existing">("new");
+  const [templateName, setTemplateName] = useState("");
+  const [existingTemplates, setExistingTemplates] = useState<Template[]>([]);
+  const [selectedExistingId, setSelectedExistingId] = useState("");
+  const [templateSaving, setTemplateSaving] = useState(false);
+
   useEffect(() => {
     if (projectId && matrixId) {
       api.riskMatrices.get(projectId, matrixId).then(setMatrix);
@@ -93,6 +100,31 @@ export default function RiskMatrixPage() {
     }
   }
 
+  async function openTemplateModal() {
+    const ts = await api.templates.list("risk_matrix");
+    setExistingTemplates(ts);
+    setTemplateMode("new");
+    setTemplateName(matrix?.title ?? "");
+    setSelectedExistingId(ts[0]?.id ?? "");
+    setTemplateModal(true);
+  }
+
+  async function saveAsTemplate() {
+    if (!matrix) return;
+    setTemplateSaving(true);
+    try {
+      const data = JSON.stringify({ risks: matrix.risks.map(({ description, probability, consequence, mitigation, owner, status }) => ({ description, probability, consequence, mitigation, owner, status })) });
+      if (templateMode === "new") {
+        await api.templates.create({ name: templateName.trim() || matrix.title, type: "risk_matrix", data });
+      } else {
+        await api.templates.update(selectedExistingId, { name: existingTemplates.find(t => t.id === selectedExistingId)?.name ?? templateName, data });
+      }
+      setTemplateModal(false);
+    } finally {
+      setTemplateSaving(false);
+    }
+  }
+
   async function handleDelete(riskId: string) {
     if (!projectId || !matrixId) return;
     await api.riskMatrices.deleteRisk(projectId, matrixId, riskId);
@@ -112,10 +144,45 @@ export default function RiskMatrixPage() {
 
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "1.5rem" }}>
         <h1 className="bf-h2">{matrix.title}</h1>
-        <Button variant="filled" onClick={() => { setShowForm(true); setEditingId(null); setForm(emptyRisk); }}>
-          + Legg til risiko
-        </Button>
+        <div style={{ display: "flex", gap: "0.5rem" }}>
+          <Button variant="outline" onClick={openTemplateModal}>Lagre som mal</Button>
+          <Button variant="filled" onClick={() => { setShowForm(true); setEditingId(null); setForm(emptyRisk); }}>+ Legg til risiko</Button>
+        </div>
       </div>
+
+      <Modal isOpen={templateModal} onRequestClose={() => setTemplateModal(false)} header="Lagre som mal">
+        <div style={{ display: "flex", flexDirection: "column", gap: "1rem" }}>
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "0.5rem" }}>
+            {(["new", "existing"] as const).map((mode) => (
+              <button key={mode} onClick={() => setTemplateMode(mode)}
+                style={{ padding: "0.75rem", borderRadius: 8, border: `2px solid ${templateMode === mode ? "#E03131" : "var(--bfc-base-dimmed)"}`, background: templateMode === mode ? "#E0313118" : "var(--bfc-base-3)", cursor: "pointer", fontWeight: 600, fontSize: "0.9rem", color: templateMode === mode ? "#E03131" : "var(--bfc-base-c-1)", transition: "all 0.15s" }}>
+                {mode === "new" ? "Ny mal" : "Oppdater eksisterende"}
+              </button>
+            ))}
+          </div>
+          {templateMode === "new" ? (
+            <Input label="Navn på malen" value={templateName} onChange={(e) => setTemplateName(e.target.value)} placeholder="f.eks. Standard risikomatrise" autoFocus />
+          ) : (
+            <div>
+              <label className="bf-label">Velg mal å oppdatere</label>
+              {existingTemplates.length === 0 ? (
+                <p style={{ color: "var(--bfc-base-c-2)", fontSize: "0.9rem" }}>Ingen eksisterende maler</p>
+              ) : (
+                <select value={selectedExistingId} onChange={(e) => setSelectedExistingId(e.target.value)} style={{ width: "100%", padding: "0.5rem", borderRadius: 4, border: "1px solid var(--bfc-base-dimmed)", marginTop: 4 }}>
+                  {existingTemplates.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}
+                </select>
+              )}
+            </div>
+          )}
+          <p style={{ margin: 0, color: "var(--bfc-base-c-2)", fontSize: "0.85rem" }}>{matrix.risks.length} risikoer vil bli lagret i malen.</p>
+          <div style={{ display: "flex", justifyContent: "flex-end", gap: "0.5rem" }}>
+            <Button onClick={() => setTemplateModal(false)}>Avbryt</Button>
+            <Button variant="filled" onClick={saveAsTemplate} state={templateSaving || (templateMode === "existing" && !selectedExistingId) ? "inactive" : "default"}>
+              {templateSaving ? "Lagrer..." : "Lagre mal"}
+            </Button>
+          </div>
+        </div>
+      </Modal>
 
       {showForm && (
         <div style={{ background: "var(--bfc-base-3)", borderRadius: 8, padding: "1.5rem", marginBottom: "1.5rem", display: "grid", gap: "1rem" }}>

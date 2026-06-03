@@ -145,6 +145,15 @@ export interface Runbook {
   activities: RunbookActivity[];
 }
 
+export interface Template {
+  id: string;
+  name: string;
+  type: string;
+  data: string; // JSON string
+  created_at: string;
+  updated_at: string;
+}
+
 export const api = {
   projects: {
     list: () => request<Project[]>("/projects/"),
@@ -234,6 +243,15 @@ export const api = {
       request<Oppgave>(`/projects/${projectId}/oppgave-lister/${listeId}/oppgaver/${oppgaveId}`, { method: "PUT", body: JSON.stringify(data) }),
     deleteOppgave: (projectId: string, listeId: string, oppgaveId: string) =>
       request<void>(`/projects/${projectId}/oppgave-lister/${listeId}/oppgaver/${oppgaveId}`, { method: "DELETE" }),
+  },
+  templates: {
+    list: (type?: string) => request<Template[]>(`/templates/${type ? `?type=${type}` : ""}`),
+    get: (id: string) => request<Template>(`/templates/${id}`),
+    create: (data: { name: string; type: string; data: string }) =>
+      request<Template>("/templates/", { method: "POST", body: JSON.stringify(data) }),
+    update: (id: string, data: { name: string; data: string }) =>
+      request<Template>(`/templates/${id}`, { method: "PUT", body: JSON.stringify(data) }),
+    delete: (id: string) => request<void>(`/templates/${id}`, { method: "DELETE" }),
   },
   runbooks: {
     list: (projectId: string) => request<Runbook[]>(`/projects/${projectId}/runbooks/`),

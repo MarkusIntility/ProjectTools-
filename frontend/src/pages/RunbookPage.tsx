@@ -1,7 +1,7 @@
 import { useEffect, useState, useCallback } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { Button, Input, Modal } from "@intility/bifrost-react";
-import { api, type Runbook, type RunbookActivity } from "../api/client";
+import { api, type Runbook, type RunbookActivity, type Template } from "../api/client";
 import { isMsalConfigured, msalInstance, PLANNER_SCOPES } from "../auth/msalConfig";
 import { fetchPlannerData, parsePlanId, taskStatus, type PlannerData, type PlannerTask } from "../auth/plannerService";
 import type { AccountInfo } from "@azure/msal-browser";
@@ -93,6 +93,13 @@ export default function RunbookPage() {
   const [editRunbookModal, setEditRunbookModal] = useState(false);
   const [runbookTitle, setRunbookTitle] = useState("");
   const [runbookUrl, setRunbookUrl] = useState("");
+
+  const [templateModal, setTemplateModal] = useState(false);
+  const [templateMode, setTemplateMode] = useState<"new" | "existing">("new");
+  const [templateName, setTemplateName] = useState("");
+  const [existingTemplates, setExistingTemplates] = useState<Template[]>([]);
+  const [selectedExistingId, setSelectedExistingId] = useState("");
+  const [templateSaving, setTemplateSaving] = useState(false);
 
   useEffect(() => {
     if (!projectId || !runbookId) return;
@@ -221,6 +228,31 @@ export default function RunbookPage() {
     setEditRunbookModal(false);
   }
 
+  async function openTemplateModal() {
+    const ts = await api.templates.list("runbook");
+    setExistingTemplates(ts);
+    setTemplateMode("new");
+    setTemplateName(runbook?.title ?? "");
+    setSelectedExistingId(ts[0]?.id ?? "");
+    setTemplateModal(true);
+  }
+
+  async function saveAsTemplate() {
+    if (!runbook) return;
+    setTemplateSaving(true);
+    try {
+      const data = JSON.stringify({ activities: runbook.activities.map(({ name, phase, status, start_date, end_date, responsible, description }) => ({ name, phase, status, start_date, end_date, responsible, description })) });
+      if (templateMode === "new") {
+        await api.templates.create({ name: templateName.trim() || runbook.title, type: "runbook", data });
+      } else {
+        await api.templates.update(selectedExistingId, { name: existingTemplates.find(t => t.id === selectedExistingId)?.name ?? templateName, data });
+      }
+      setTemplateModal(false);
+    } finally {
+      setTemplateSaving(false);
+    }
+  }
+
   if (!runbook) return <div style={{ padding: "2rem" }}>Laster...</div>;
 
   const srcCfg = SOURCE_CONFIG[runbook.source];
@@ -336,7 +368,8 @@ export default function RunbookPage() {
 
           {runbook.source === "own" && (
             <>
-              <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: "1rem" }}>
+              <div style={{ display: "flex", justifyContent: "flex-end", gap: "0.5rem", marginBottom: "1rem" }}>
+                <Button variant="outline" onClick={openTemplateModal}>Lagre som mal</Button>
                 <Button variant="filled" onClick={() => openAdd()}>+ Legg til aktivitet</Button>
               </div>
 
@@ -432,6 +465,40 @@ export default function RunbookPage() {
       )}
 
       {/* Activity form modal */}
+      <Modal isOpen={templateModal} onRequestClose={() => setTemplateModal(false)} header="Lagre som mal">
+        <div style={{ display: "flex", flexDirection: "column", gap: "1rem" }}>
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "0.5rem" }}>
+            {(["new", "existing"] as const).map((mode) => (
+              <button key={mode} onClick={() => setTemplateMode(mode)}
+                style={{ padding: "0.75rem", borderRadius: 8, border: `2px solid ${templateMode === mode ? "#7950F2" : "var(--bfc-base-dimmed)"}`, background: templateMode === mode ? "#7950F218" : "var(--bfc-base-3)", cursor: "pointer", fontWeight: 600, fontSize: "0.9rem", color: templateMode === mode ? "#7950F2" : "var(--bfc-base-c-1)", transition: "all 0.15s" }}>
+                {mode === "new" ? "Ny mal" : "Oppdater eksisterende"}
+              </button>
+            ))}
+          </div>
+          {templateMode === "new" ? (
+            <Input label="Navn på malen" value={templateName} onChange={(e) => setTemplateName(e.target.value)} placeholder="f.eks. Standard cutover-runbook" autoFocus />
+          ) : (
+            <div>
+              <label className="bf-label">Velg mal å oppdatere</label>
+              {existingTemplates.length === 0 ? (
+                <p style={{ color: "var(--bfc-base-c-2)", fontSize: "0.9rem" }}>Ingen eksisterende maler</p>
+              ) : (
+                <select value={selectedExistingId} onChange={(e) => setSelectedExistingId(e.target.value)} style={{ width: "100%", padding: "0.5rem", borderRadius: 4, border: "1px solid var(--bfc-base-dimmed)", marginTop: 4 }}>
+                  {existingTemplates.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}
+                </select>
+              )}
+            </div>
+          )}
+          <p style={{ margin: 0, color: "var(--bfc-base-c-2)", fontSize: "0.85rem" }}>{runbook.activities.length} aktiviteter vil bli lagret i malen.</p>
+          <div style={{ display: "flex", justifyContent: "flex-end", gap: "0.5rem" }}>
+            <Button onClick={() => setTemplateModal(false)}>Avbryt</Button>
+            <Button variant="filled" onClick={saveAsTemplate} state={templateSaving || (templateMode === "existing" && !selectedExistingId) ? "inactive" : "default"}>
+              {templateSaving ? "Lagrer..." : "Lagre mal"}
+            </Button>
+          </div>
+        </div>
+      </Modal>
+
       <Modal isOpen={activityModal} onRequestClose={() => setActivityModal(false)} header={editTarget ? "Rediger aktivitet" : "Ny aktivitet"}>
         <ActivityForm
           form={form}

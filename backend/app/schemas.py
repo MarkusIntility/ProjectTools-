@@ -257,3 +257,26 @@ class OppgaveListeResponse(BaseModel):
     oppgaver: list[OppgaveResponse] = []
 
     model_config = {"from_attributes": True}
+
+
+# Template
+class TemplateCreate(BaseModel):
+    name: str
+    type: str
+    data: str  # JSON string
+
+
+class TemplateUpdate(BaseModel):
+    name: str
+    data: str  # JSON string
+
+
+class TemplateResponse(BaseModel):
+    id: str
+    name: str
+    type: str
+    data: str
+    created_at: datetime
+    updated_at: datetime
+
+    model_config = {"from_attributes": True}
