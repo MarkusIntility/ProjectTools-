@@ -4,9 +4,21 @@ import { Button, Input, Modal } from "@intility/bifrost-react";
 import { api, type RiskMatrix, type RiskItem, type Template } from "../api/client";
 
 const RISK_COLORS: Record<string, string> = {
-  low: "#4caf50",
-  medium: "#ff9800",
-  high: "#f44336",
+  low: "#2F9E44",
+  medium: "#F76707",
+  high: "#E03131",
+};
+
+const CELL_BG: Record<string, string> = {
+  low: "#D3F9D8",
+  medium: "#FFE8CC",
+  high: "#FFE3E3",
+};
+
+const CELL_BORDER: Record<string, string> = {
+  low: "#2F9E4450",
+  medium: "#F7670750",
+  high: "#E0313150",
 };
 
 function riskLevel(score: number): "low" | "medium" | "high" {
@@ -45,8 +57,8 @@ const emptyRisk: RiskForm = {
   status: "open",
   fagomrade: "",
   risk_owner: "",
-  residual_probability: 0,
-  residual_consequence: 0,
+  residual_probability: 1,
+  residual_consequence: 1,
 };
 
 export default function RiskMatrixPage() {
@@ -58,6 +70,7 @@ export default function RiskMatrixPage() {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [residualEnabled, setResidualEnabled] = useState(false);
+  const [activeTab, setActiveTab] = useState<"table" | "heatmap">("table");
 
   const [templateModal, setTemplateModal] = useState(false);
   const [templateMode, setTemplateMode] = useState<"new" | "existing">("new");
@@ -215,9 +228,8 @@ export default function RiskMatrixPage() {
             <Input label="Risiko eier" value={form.risk_owner} onChange={(e) => setForm({ ...form, risk_owner: e.target.value })} placeholder="Navn eller rolle" />
           </div>
 
-          {/* Initial risk scoring */}
           <div style={{ borderTop: "1px solid var(--bfc-base-dimmed)", paddingTop: "0.75rem" }}>
-            <div style={{ fontSize: "0.8rem", fontWeight: 600, color: "var(--bfc-base-c-2)", marginBottom: "0.5rem", textTransform: "uppercase", letterSpacing: "0.05em" }}>
+            <div style={{ fontSize: "0.8rem", fontWeight: 600, color: "var(--bfc-base-c-2)", marginBottom: "0.75rem", textTransform: "uppercase", letterSpacing: "0.05em" }}>
               Risikovurdering (før tiltak)
             </div>
             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "1rem" }}>
@@ -234,12 +246,17 @@ export default function RiskMatrixPage() {
                   style={{ width: "100%", accentColor: "#1971C2", cursor: "pointer" }} />
               </div>
             </div>
+            <div style={{ marginTop: "0.5rem", fontSize: "0.85rem", color: "var(--bfc-base-c-2)" }}>
+              Score:{" "}
+              <span style={{ background: RISK_COLORS[riskLevel(form.probability * form.consequence)], color: "#fff", borderRadius: 4, padding: "1px 8px", fontWeight: 600 }}>
+                {form.probability * form.consequence}
+              </span>
+            </div>
           </div>
 
           <Input label="Tiltak" value={form.mitigation} onChange={(e) => setForm({ ...form, mitigation: e.target.value })} />
           <Input label="Ansvarlig (tiltak)" value={form.owner} onChange={(e) => setForm({ ...form, owner: e.target.value })} />
 
-          {/* Residual risk scoring */}
           <div style={{ borderTop: "1px solid var(--bfc-base-dimmed)", paddingTop: "0.75rem" }}>
             <div style={{ display: "flex", alignItems: "center", gap: "0.75rem", marginBottom: "0.75rem" }}>
               <div style={{ fontSize: "0.8rem", fontWeight: 600, color: "var(--bfc-base-c-2)", textTransform: "uppercase", letterSpacing: "0.05em" }}>
@@ -275,10 +292,7 @@ export default function RiskMatrixPage() {
             {residualEnabled && (
               <div style={{ marginTop: "0.5rem", fontSize: "0.85rem", color: "var(--bfc-base-c-2)" }}>
                 Restrisiko-score:{" "}
-                <span style={{
-                  background: RISK_COLORS[riskLevel(form.residual_probability * form.residual_consequence)],
-                  color: "#fff", borderRadius: 4, padding: "1px 8px", fontWeight: 600,
-                }}>
+                <span style={{ background: RISK_COLORS[riskLevel(form.residual_probability * form.residual_consequence)], color: "#fff", borderRadius: 4, padding: "1px 8px", fontWeight: 600 }}>
                   {form.residual_probability * form.residual_consequence}
                 </span>
               </div>
@@ -306,9 +320,31 @@ export default function RiskMatrixPage() {
         </div>
       )}
 
+      {/* Tab switcher */}
+      {matrix.risks.length > 0 && (
+        <div style={{ display: "flex", gap: "0.25rem", marginBottom: "1.25rem", borderBottom: "1px solid var(--bfc-base-dimmed)", paddingBottom: 0 }}>
+          {(["table", "heatmap"] as const).map((tab) => (
+            <button
+              key={tab}
+              onClick={() => setActiveTab(tab)}
+              style={{
+                background: "none", border: "none", cursor: "pointer",
+                padding: "0.6rem 1.1rem",
+                fontSize: "0.9rem", fontWeight: activeTab === tab ? 600 : 400,
+                color: activeTab === tab ? "#E03131" : "var(--bfc-base-c-2)",
+                borderBottom: activeTab === tab ? "2px solid #E03131" : "2px solid transparent",
+                marginBottom: -1, transition: "color 0.15s",
+              }}
+            >
+              {tab === "table" ? "Tabell" : "Heatmap"}
+            </button>
+          ))}
+        </div>
+      )}
+
       {matrix.risks.length === 0 ? (
         <p style={{ color: "var(--bfc-base-c-2)" }}>Ingen risikoer lagt til ennå.</p>
-      ) : (
+      ) : activeTab === "table" ? (
         <table style={{ width: "100%", borderCollapse: "collapse" }}>
           <thead>
             <tr style={{ textAlign: "left", borderBottom: "2px solid var(--bfc-base-dimmed)", fontSize: "0.85rem" }}>
@@ -371,7 +407,171 @@ export default function RiskMatrixPage() {
             })}
           </tbody>
         </table>
+      ) : (
+        <Heatmap risks={matrix.risks} onEdit={openEdit} />
       )}
+    </div>
+  );
+}
+
+// ─── Heatmap ──────────────────────────────────────────────────────────────────
+
+const CELL_W = 118;
+const CELL_H = 88;
+
+function Heatmap({ risks, onEdit }: { risks: RiskItem[]; onEdit: (r: RiskItem) => void }) {
+  // Index risks by cell key "P,C"
+  const byCell: Record<string, { original: RiskItem[]; residual: RiskItem[] }> = {};
+  for (let p = 1; p <= 5; p++) {
+    for (let c = 1; c <= 5; c++) {
+      byCell[`${p},${c}`] = { original: [], residual: [] };
+    }
+  }
+  for (const r of risks) {
+    byCell[`${r.probability},${r.consequence}`].original.push(r);
+    if (r.residual_probability && r.residual_consequence) {
+      byCell[`${r.residual_probability},${r.residual_consequence}`].residual.push(r);
+    }
+  }
+
+  return (
+    <div style={{ overflowX: "auto" }}>
+      <div style={{ display: "inline-flex", gap: 0, alignItems: "stretch", minWidth: "fit-content" }}>
+        {/* Y-axis label */}
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "center", width: 28, flexShrink: 0 }}>
+          <span style={{
+            writingMode: "vertical-rl", transform: "rotate(180deg)",
+            fontSize: "0.78rem", fontWeight: 600, color: "var(--bfc-base-c-2)",
+            letterSpacing: "0.04em", textTransform: "uppercase",
+          }}>
+            Sannsynlighet
+          </span>
+        </div>
+
+        <div>
+          {/* Grid rows: P=5 top, P=1 bottom */}
+          {[5, 4, 3, 2, 1].map((p) => (
+            <div key={p} style={{ display: "flex", alignItems: "stretch", gap: 3, marginBottom: 3 }}>
+              {/* Row label */}
+              <div style={{ width: 20, display: "flex", alignItems: "center", justifyContent: "center", fontSize: "0.82rem", fontWeight: 700, color: "var(--bfc-base-c-1)", flexShrink: 0 }}>
+                {p}
+              </div>
+
+              {[1, 2, 3, 4, 5].map((c) => {
+                const score = p * c;
+                const level = riskLevel(score);
+                const cell = byCell[`${p},${c}`];
+                const MAX_SHOW = 3;
+                const shownOriginal = cell.original.slice(0, MAX_SHOW);
+                const overflow = cell.original.length - MAX_SHOW;
+
+                return (
+                  <div key={c} style={{
+                    width: CELL_W, minHeight: CELL_H,
+                    background: CELL_BG[level],
+                    border: `1px solid ${CELL_BORDER[level]}`,
+                    borderRadius: 6, padding: "5px 5px 16px",
+                    position: "relative",
+                    display: "flex", flexWrap: "wrap",
+                    gap: 3, alignContent: "flex-start",
+                  }}>
+                    {shownOriginal.map((r) => (
+                      <RiskChip key={r.id} label={r.description} color={RISK_COLORS[riskLevel(r.risk_score)]} onClick={() => onEdit(r)} title={`${r.description} (S${r.probability}×K${r.consequence}=${r.risk_score})`} />
+                    ))}
+                    {overflow > 0 && (
+                      <span style={{ fontSize: "0.68rem", color: "var(--bfc-base-c-2)", fontWeight: 600, alignSelf: "center" }}>
+                        +{overflow}
+                      </span>
+                    )}
+                    {/* Residual chips */}
+                    {cell.residual.map((r) => (
+                      <RiskChip
+                        key={`res-${r.id}`}
+                        label={r.description}
+                        color={RISK_COLORS[riskLevel(r.residual_score ?? 0)]}
+                        onClick={() => onEdit(r)}
+                        title={`Restrisiko: ${r.description} (S${r.residual_probability}×K${r.residual_consequence}=${r.residual_score})`}
+                        residual
+                      />
+                    ))}
+                    {/* Score badge */}
+                    <span style={{
+                      position: "absolute", bottom: 3, right: 5,
+                      fontSize: "0.62rem", fontWeight: 700,
+                      color: RISK_COLORS[level], opacity: 0.7,
+                    }}>
+                      {score}
+                    </span>
+                  </div>
+                );
+              })}
+            </div>
+          ))}
+
+          {/* X-axis labels */}
+          <div style={{ display: "flex", alignItems: "center", gap: 3, marginTop: 4, paddingLeft: 23 }}>
+            {[1, 2, 3, 4, 5].map((c) => (
+              <div key={c} style={{ width: CELL_W, textAlign: "center", fontSize: "0.82rem", fontWeight: 700, color: "var(--bfc-base-c-1)" }}>
+                {c}
+              </div>
+            ))}
+          </div>
+          <div style={{ textAlign: "center", fontSize: "0.78rem", fontWeight: 600, color: "var(--bfc-base-c-2)", marginTop: 6, paddingLeft: 23, textTransform: "uppercase", letterSpacing: "0.04em" }}>
+            Konsekvens
+          </div>
+        </div>
+      </div>
+
+      {/* Legend */}
+      <div style={{ display: "flex", flexWrap: "wrap", gap: "1rem", marginTop: "1.5rem", alignItems: "center" }}>
+        <span style={{ fontSize: "0.8rem", fontWeight: 600, color: "var(--bfc-base-c-2)" }}>Forklaring:</span>
+        {([
+          { level: "low", label: "Lav (1–6)" },
+          { level: "medium", label: "Middels (7–14)" },
+          { level: "high", label: "Høy (15–25)" },
+        ] as const).map(({ level, label }) => (
+          <div key={level} style={{ display: "flex", alignItems: "center", gap: "0.4rem" }}>
+            <div style={{ width: 18, height: 14, borderRadius: 3, background: CELL_BG[level], border: `1px solid ${CELL_BORDER[level]}` }} />
+            <span style={{ fontSize: "0.78rem", color: "var(--bfc-base-c-2)" }}>{label}</span>
+          </div>
+        ))}
+        <div style={{ display: "flex", alignItems: "center", gap: "0.4rem" }}>
+          <div style={{ width: 18, height: 14, borderRadius: 3, border: "2px dashed #888", background: "transparent" }} />
+          <span style={{ fontSize: "0.78rem", color: "var(--bfc-base-c-2)" }}>Restrisiko</span>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function RiskChip({ label, color, onClick, title, residual = false }: {
+  label: string;
+  color: string;
+  onClick: () => void;
+  title: string;
+  residual?: boolean;
+}) {
+  const [hovered, setHovered] = useState(false);
+  return (
+    <div
+      onClick={onClick}
+      title={title}
+      onMouseEnter={() => setHovered(true)}
+      onMouseLeave={() => setHovered(false)}
+      style={{
+        background: residual ? "transparent" : color,
+        border: `2px ${residual ? "dashed" : "solid"} ${color}`,
+        color: residual ? color : "#fff",
+        borderRadius: 4, padding: "1px 5px",
+        fontSize: "0.68rem", fontWeight: 600,
+        cursor: "pointer", maxWidth: CELL_W - 14,
+        overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
+        boxShadow: hovered ? `0 0 0 2px ${color}40` : "none",
+        transition: "box-shadow 0.12s",
+        userSelect: "none",
+      }}
+    >
+      {label.length > 14 ? label.slice(0, 14) + "…" : label}
     </div>
   );
 }
