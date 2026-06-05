@@ -1489,11 +1489,11 @@ function GanttView({ phases, milestones = [] }: { phases: GanttPhase[]; mileston
                       fontSize: "0.78rem", fontWeight: 500,
                       color: "var(--bfc-base-c-2)",
                       paddingRight: "0.75rem",
-                      overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
-                      display: "flex", alignItems: "center", gap: "0.35rem",
+                      display: "flex", alignItems: "flex-start", gap: "0.35rem",
                     }}>
                       <span style={{
                         display: "inline-block", width: 8, height: 8, flexShrink: 0,
+                        marginTop: "0.2em",
                         background: m.color, transform: "rotate(45deg)",
                       }} />
                       {m.name}
