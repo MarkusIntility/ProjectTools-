@@ -119,10 +119,8 @@ class Meeting(Base):
     plan_id: Mapped[str] = mapped_column(String(36), ForeignKey("meeting_plans.id"))
     title: Mapped[str] = mapped_column(String(200))
     date: Mapped[datetime] = mapped_column(DateTime)
-    location: Mapped[str | None] = mapped_column(String(300))
-    agenda: Mapped[str | None] = mapped_column(Text)
-    participants: Mapped[str | None] = mapped_column(Text)
-    minutes: Mapped[str | None] = mapped_column(Text)
+    purpose: Mapped[str | None] = mapped_column(Text)
+    outlook_id: Mapped[str | None] = mapped_column(String(200), unique=False)
 
     plan: Mapped["MeetingPlan"] = relationship(back_populates="meetings")
 

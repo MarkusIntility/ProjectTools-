@@ -69,10 +69,8 @@ export interface Meeting {
   plan_id: string;
   title: string;
   date: string;
-  location: string | null;
-  agenda: string | null;
-  participants: string | null;
-  minutes: string | null;
+  purpose: string | null;
+  outlook_id: string | null;
 }
 
 export interface MeetingPlan {

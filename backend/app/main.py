@@ -28,6 +28,26 @@ def _migrate_risk_items():
 
 _migrate_risk_items()
 
+
+def _migrate_meetings():
+    """Add purpose and outlook_id columns to meetings if they don't exist."""
+    inspector = inspect(engine)
+    if "meetings" not in inspector.get_table_names():
+        return
+    existing = {col["name"] for col in inspector.get_columns("meetings")}
+    additions = [
+        ("purpose", "NVARCHAR(MAX)"),
+        ("outlook_id", "NVARCHAR(200)"),
+    ]
+    with engine.connect() as conn:
+        for col, typ in additions:
+            if col not in existing:
+                conn.execute(text(f"ALTER TABLE meetings ADD [{col}] {typ} NULL"))
+        conn.commit()
+
+
+_migrate_meetings()
+
 app = FastAPI(title="ProjectTools API", version="1.0.0")
 
 app.add_middleware(

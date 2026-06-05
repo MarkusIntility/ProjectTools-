@@ -20,3 +20,4 @@ export const msalInstance = new PublicClientApplication(config);
 
 export const APP_SCOPES = ["User.Read"];
 export const PLANNER_SCOPES = ["Tasks.Read"];
+export const CALENDAR_SCOPES = ["Calendars.Read"];

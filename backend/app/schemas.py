@@ -106,19 +106,17 @@ class CommunicationPlanResponse(CommunicationPlanBase):
 class MeetingBase(BaseModel):
     title: str
     date: datetime
-    location: str | None = None
-    agenda: str | None = None
-    participants: str | None = None
-    minutes: str | None = None
+    purpose: str | None = None
 
 
 class MeetingCreate(MeetingBase):
-    pass
+    outlook_id: str | None = None
 
 
 class MeetingResponse(MeetingBase):
     id: str
     plan_id: str
+    outlook_id: str | None = None
 
     model_config = {"from_attributes": True}
 

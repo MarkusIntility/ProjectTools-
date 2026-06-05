@@ -205,8 +205,8 @@ export default function ProjectDetailPage() {
       } else {
         const p = await api.meetingPlans.create(projectId, { title });
         if (simpleSelectedTemplate) {
-          const d = JSON.parse(simpleSelectedTemplate.data) as { meetings?: Array<{ title: string; date: string; location?: string | null; agenda?: string | null; participants?: string | null; minutes?: string | null }> };
-          for (const mt of d.meetings ?? []) await api.meetingPlans.addMeeting(projectId, p.id, { title: mt.title, date: mt.date, location: mt.location ?? null, agenda: mt.agenda ?? null, participants: mt.participants ?? null, minutes: mt.minutes ?? null });
+          const d = JSON.parse(simpleSelectedTemplate.data) as { meetings?: Array<{ title: string; date: string; purpose?: string | null }> };
+          for (const mt of d.meetings ?? []) await api.meetingPlans.addMeeting(projectId, p.id, { title: mt.title, date: mt.date, purpose: mt.purpose ?? null, outlook_id: null });
         }
         navigate(`/projects/${projectId}/meeting-plan/${p.id}`);
       }
