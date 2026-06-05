@@ -1,7 +1,9 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { Button, Input, Modal } from "@intility/bifrost-react";
 import { api, type Project, type RiskMatrix, type RiskItem, type CommunicationPlan, type MeetingPlan, type Runbook, type ProjectPlan, type OppgaveListe, type Template } from "../api/client";
+import { isMsalConfigured, msalInstance } from "../auth/msalConfig";
+import { fetchPlannerData } from "../auth/plannerService";
 
 const ACCENT_COLORS = [
   "#4C6EF5", "#7950F2", "#E64980", "#F76707",
@@ -738,6 +740,7 @@ type DeadlineItem = {
   date: Date;
   done: boolean;
   context: string;
+  source?: "planner";
 };
 
 const TYPE_CONFIG: Record<DeadlineItem["type"], { color: string; label: string }> = {
@@ -912,6 +915,64 @@ function DashboardView({ riskMatrices, projectPlans, oppgaveLister, runbooks, me
   projectId: string;
   navigate: (path: string) => void;
 }) {
+  // ── Planner deadlines (silent fetch) ─────────────────────────────────────────
+  const [plannerDeadlines, setPlannerDeadlines] = useState<DeadlineItem[]>([]);
+  const [plannerLoading, setPlannerLoading] = useState(false);
+
+  const fetchPlannerDeadlines = useCallback(async () => {
+    if (!isMsalConfigured) return;
+    const accounts = msalInstance.getAllAccounts();
+    if (accounts.length === 0) return;
+    const account = accounts[0];
+
+    const resources: Array<{ url: string; context: string; type: DeadlineItem["type"] }> = [
+      ...projectPlans
+        .filter((p) => p.source === "planner" && p.external_url)
+        .map((p) => ({ url: p.external_url!, context: p.title, type: "task" as const })),
+      ...oppgaveLister
+        .filter((ol) => ol.source === "planner" && ol.external_url)
+        .map((ol) => ({ url: ol.external_url!, context: ol.title, type: "oppgave" as const })),
+      ...runbooks
+        .filter((rb) => rb.source === "planner" && rb.external_url)
+        .map((rb) => ({ url: rb.external_url!, context: rb.title, type: "activity" as const })),
+    ];
+
+    if (resources.length === 0) return;
+
+    setPlannerLoading(true);
+    const fetchNow = new Date();
+    const fetchTwoWeeks = new Date(fetchNow.getTime() + 14 * 86400000);
+
+    const results = await Promise.allSettled(
+      resources.map(async ({ url, context, type }) => {
+        const data = await fetchPlannerData(msalInstance, account, url);
+        return data.tasks
+          .filter((t) => t.dueDateTime)
+          .map((t) => ({
+            key: `planner-${t.id}`,
+            type,
+            title: t.title,
+            date: new Date(t.dueDateTime!),
+            done: t.percentComplete === 100,
+            context,
+            source: "planner" as const,
+          }))
+          .filter((d) => d.date >= fetchNow && d.date <= fetchTwoWeeks);
+      })
+    );
+
+    const items: DeadlineItem[] = results
+      .flatMap((r) => (r.status === "fulfilled" ? r.value : []))
+      .sort((a, b) => a.date.getTime() - b.date.getTime());
+
+    setPlannerDeadlines(items);
+    setPlannerLoading(false);
+  }, [projectPlans, oppgaveLister, runbooks]);
+
+  useEffect(() => {
+    fetchPlannerDeadlines();
+  }, [fetchPlannerDeadlines]);
+
   // ── Derive data ─────────────────────────────────────────────────────────────
   const allRisks = riskMatrices.flatMap((m) => m.risks);
   const openRisks = allRisks.filter((r) => r.status === "open");
@@ -969,6 +1030,7 @@ function DashboardView({ riskMatrices, projectPlans, oppgaveLister, runbooks, me
     ),
   ]
     .filter((d) => d.date >= now && d.date <= twoWeeks)
+    .concat(plannerDeadlines)
     .sort((a, b) => a.date.getTime() - b.date.getTime());
 
   // ── Resource progress rows — all sources ────────────────────────────────────
@@ -1108,8 +1170,15 @@ function DashboardView({ riskMatrices, projectPlans, oppgaveLister, runbooks, me
 
         {/* Right: Kommende frister */}
         <div style={{ borderRadius: 10, background: "var(--bfc-base-3)", border: "1px solid var(--bfc-base-dimmed)", padding: "1.25rem" }}>
-          <h3 className="bf-h4" style={{ margin: "0 0 1rem" }}>Kommende (14 dager)</h3>
-          {deadlines.length === 0 ? (
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "1rem" }}>
+            <h3 className="bf-h4" style={{ margin: 0 }}>Kommende (14 dager)</h3>
+            {plannerLoading && (
+              <span style={{ fontSize: "0.72rem", color: "#0078D4", fontWeight: 500 }}>
+                ↻ Laster Planner…
+              </span>
+            )}
+          </div>
+          {deadlines.length === 0 && !plannerLoading ? (
             <p style={{ color: "var(--bfc-base-c-2)", fontSize: "0.9rem", margin: 0 }}>
               Ingen frister de neste 14 dagene.
             </p>
@@ -1132,6 +1201,15 @@ function DashboardView({ riskMatrices, projectPlans, oppgaveLister, runbooks, me
                     }}>
                       {cfg.label}
                     </span>
+                    {d.source === "planner" && (
+                      <span style={{
+                        fontSize: "0.65rem", fontWeight: 600, padding: "1px 6px",
+                        borderRadius: 20, background: "#0078D418", color: "#0078D4",
+                        flexShrink: 0, whiteSpace: "nowrap",
+                      }}>
+                        Planner
+                      </span>
+                    )}
                     <span style={{
                       flex: 1, fontSize: "0.85rem",
                       overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
