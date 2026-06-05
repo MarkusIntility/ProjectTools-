@@ -21,6 +21,7 @@ export interface PlannerTask {
   labels?: string[];
   outlineLevel?: number;   // 1 = fase, 2 = leveranse, 3 = lokasjon/pulje
   parentTaskId?: string | null;
+  durationMinutes?: number | null; // 0 = explicit milestone in Planner Premium; null = not fetched (Basic Planner)
 }
 
 export interface PlannerData {
@@ -50,6 +51,7 @@ interface DataverseTask {
   "_msdyn_projectsprint_value"?: string | null;
   "_msdyn_parenttask_value"?: string | null;
   msdyn_outlinelevel?: number;
+  msdyn_duration?: number | null; // in minutes; 0 = milestone
 }
 
 
@@ -174,6 +176,7 @@ async function fetchPlannerPremiumData(
       "msdyn_progress",
       "msdyn_scheduledstart",
       "msdyn_scheduledend",
+      "msdyn_duration",
       "_msdyn_projectbucket_value",
       "_msdyn_resourcecategory_value",
       "_msdyn_projectsprint_value",
@@ -283,6 +286,7 @@ async function fetchPlannerPremiumData(
         labels,
         outlineLevel: t.msdyn_outlinelevel,
         parentTaskId: t["_msdyn_parenttask_value"] ?? null,
+        durationMinutes: t.msdyn_duration ?? null,
       };
     });
 

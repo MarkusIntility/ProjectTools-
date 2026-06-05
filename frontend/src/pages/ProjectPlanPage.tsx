@@ -1228,7 +1228,13 @@ function extractOwnGanttPhases(tasks: ProjectPlanTask[]): GanttPhase[] {
 
 function isMilestone(t: PlannerTask): boolean {
   if (!t.startDateTime || !t.dueDateTime) return false;
-  return new Date(t.startDateTime).toDateString() === new Date(t.dueDateTime).toDateString();
+  if (new Date(t.startDateTime).toDateString() !== new Date(t.dueDateTime).toDateString()) return false;
+  // For Planner Premium tasks, require explicit zero-duration to distinguish genuine milestones
+  // from auto-scheduled tasks that Dataverse assigns the project start date to
+  if (t.durationMinutes !== null && t.durationMinutes !== undefined) {
+    return t.durationMinutes === 0;
+  }
+  return true;
 }
 
 function extractPlannerGanttPhases(data: PlannerData): { phases: GanttPhase[]; milestones: GanttMilestone[] } {
