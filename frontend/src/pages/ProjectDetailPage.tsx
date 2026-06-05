@@ -857,10 +857,11 @@ function MiniHeatmap({ risks }: { risks: RiskItem[] }) {
 
 // ── Resource progress bar ─────────────────────────────────────────────────────
 
-function ResourceProgressRow({ name, done, total, color, typeLabel }: {
-  name: string; done: number; total: number; color: string; typeLabel: string;
+function ResourceProgressRow({ name, done, total, color, typeLabel, external, externalUrl }: {
+  name: string; done: number | null; total: number | null; color: string; typeLabel: string;
+  external?: boolean; externalUrl?: string | null;
 }) {
-  const pct = total > 0 ? Math.round((done / total) * 100) : 0;
+  const pct = (total != null && total > 0 && done != null) ? Math.round((done / total) * 100) : 0;
   return (
     <div style={{ display: "flex", alignItems: "center", gap: "0.75rem" }}>
       <div style={{ display: "flex", alignItems: "center", gap: "0.4rem", width: 220, flexShrink: 0, minWidth: 0 }}>
@@ -871,12 +872,31 @@ function ResourceProgressRow({ name, done, total, color, typeLabel }: {
           {name}
         </span>
       </div>
-      <div style={{ flex: 1, height: 7, borderRadius: 4, background: "var(--bfc-base-dimmed)", overflow: "hidden", minWidth: 60 }}>
-        <div style={{ height: "100%", width: `${pct}%`, background: pct === 100 ? "#2F9E44" : color, borderRadius: 4, transition: "width 0.4s ease" }} />
-      </div>
-      <span style={{ fontSize: "0.78rem", color: "var(--bfc-base-c-2)", whiteSpace: "nowrap", flexShrink: 0, minWidth: 70, textAlign: "right" }}>
-        {done}/{total} · {pct}%
-      </span>
+      {external ? (
+        <div style={{ flex: 1, display: "flex", alignItems: "center", gap: "0.5rem" }}>
+          <span style={{ fontSize: "0.75rem", padding: "1px 8px", borderRadius: 20, background: "#868E9618", color: "#868E96", fontWeight: 600 }}>
+            Ekstern
+          </span>
+          {externalUrl && (
+            <a href={externalUrl} target="_blank" rel="noreferrer"
+              style={{ fontSize: "0.75rem", color: color, fontWeight: 500, textDecoration: "none" }}
+              onMouseEnter={(e) => (e.currentTarget.style.textDecoration = "underline")}
+              onMouseLeave={(e) => (e.currentTarget.style.textDecoration = "none")}
+            >
+              Åpne →
+            </a>
+          )}
+        </div>
+      ) : (
+        <>
+          <div style={{ flex: 1, height: 7, borderRadius: 4, background: "var(--bfc-base-dimmed)", overflow: "hidden", minWidth: 60 }}>
+            <div style={{ height: "100%", width: `${pct}%`, background: pct === 100 ? "#2F9E44" : color, borderRadius: 4, transition: "width 0.4s ease" }} />
+          </div>
+          <span style={{ fontSize: "0.78rem", color: "var(--bfc-base-c-2)", whiteSpace: "nowrap", flexShrink: 0, minWidth: 70, textAlign: "right" }}>
+            {done}/{total} · {pct}%
+          </span>
+        </>
+      )}
     </div>
   );
 }
@@ -951,26 +971,34 @@ function DashboardView({ riskMatrices, projectPlans, oppgaveLister, runbooks, me
     .filter((d) => d.date >= now && d.date <= twoWeeks)
     .sort((a, b) => a.date.getTime() - b.date.getTime());
 
-  // ── Resource progress rows ───────────────────────────────────────────────────
-  type ProgressRow = { id: string; name: string; done: number; total: number; color: string; typeLabel: string };
+  // ── Resource progress rows — all sources ────────────────────────────────────
+  type ProgressRow = {
+    id: string; name: string;
+    done: number | null; total: number | null;
+    color: string; typeLabel: string;
+    external: boolean; externalUrl?: string | null;
+  };
   const progressRows: ProgressRow[] = [
-    ...projectPlans.filter((p) => p.source === "own").map((p) => ({
+    ...projectPlans.map((p) => ({
       id: p.id, name: p.title,
-      done: p.tasks.filter((t) => t.percent_complete === 100).length,
-      total: p.tasks.length,
+      done: p.source === "own" ? p.tasks.filter((t) => t.percent_complete === 100).length : null,
+      total: p.source === "own" ? p.tasks.length : null,
       color: SECTION_CONFIG.projectplan.color, typeLabel: "Prosjektplan",
+      external: p.source !== "own", externalUrl: p.external_url,
     })),
-    ...oppgaveLister.filter((ol) => ol.source === "own").map((ol) => ({
+    ...oppgaveLister.map((ol) => ({
       id: ol.id, name: ol.title,
-      done: ol.oppgaver.filter((o) => o.status === "done").length,
-      total: ol.oppgaver.length,
+      done: ol.source === "own" ? ol.oppgaver.filter((o) => o.status === "done").length : null,
+      total: ol.source === "own" ? ol.oppgaver.length : null,
       color: SECTION_CONFIG.oppgave.color, typeLabel: "Oppgaver",
+      external: ol.source !== "own", externalUrl: ol.external_url,
     })),
-    ...runbooks.filter((rb) => rb.source === "own").map((rb) => ({
+    ...runbooks.map((rb) => ({
       id: rb.id, name: rb.title,
-      done: rb.activities.filter((a) => a.status === "done").length,
-      total: rb.activities.length,
+      done: rb.source === "own" ? rb.activities.filter((a) => a.status === "done").length : null,
+      total: rb.source === "own" ? rb.activities.length : null,
       color: SECTION_CONFIG.runbook.color, typeLabel: "Runbook",
+      external: rb.source !== "own", externalUrl: rb.external_url,
     })),
   ];
 
@@ -1127,16 +1155,20 @@ function DashboardView({ riskMatrices, projectPlans, oppgaveLister, runbooks, me
       </div>
 
       {/* ── Resource progress ────────────────────────────────────────────────── */}
-      {progressRows.length > 0 && (
-        <div style={{ borderRadius: 10, background: "var(--bfc-base-3)", border: "1px solid var(--bfc-base-dimmed)", padding: "1.25rem" }}>
-          <h3 className="bf-h4" style={{ margin: "0 0 1rem" }}>Ressursfremdrift</h3>
+      <div style={{ borderRadius: 10, background: "var(--bfc-base-3)", border: "1px solid var(--bfc-base-dimmed)", padding: "1.25rem" }}>
+        <h3 className="bf-h4" style={{ margin: "0 0 1rem" }}>Ressursfremdrift</h3>
+        {progressRows.length === 0 ? (
+          <p style={{ color: "var(--bfc-base-c-2)", fontSize: "0.9rem", margin: 0 }}>
+            Ingen prosjektplaner, oppgavelister eller runbooks registrert.
+          </p>
+        ) : (
           <div style={{ display: "flex", flexDirection: "column", gap: "0.75rem" }}>
             {progressRows.map((row) => (
-              <ResourceProgressRow key={row.id} name={row.name} done={row.done} total={row.total} color={row.color} typeLabel={row.typeLabel} />
+              <ResourceProgressRow key={row.id} name={row.name} done={row.done} total={row.total} color={row.color} typeLabel={row.typeLabel} external={row.external} externalUrl={row.externalUrl} />
             ))}
           </div>
-        </div>
-      )}
+        )}
+      </div>
     </div>
   );
 }
