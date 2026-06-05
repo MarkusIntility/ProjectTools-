@@ -331,7 +331,7 @@ export default function ProjectDetailPage() {
   } as const;
 
   return (
-    <div style={{ maxWidth: 900, margin: "0 auto", padding: "2rem" }}>
+    <div style={{ maxWidth: activeView === "dashboard" ? 1200 : 900, margin: "0 auto", padding: "2rem" }}>
       <button onClick={() => navigate("/projects")} style={{ background: "none", border: "none", cursor: "pointer", color: "var(--bfc-base-c-2)", marginBottom: "1.5rem", fontSize: "0.9rem", padding: 0 }}>
         ← Tilbake til prosjekter
       </button>
@@ -775,20 +775,30 @@ function KpiCard({ value, label, sub, color, onClick }: {
       onMouseEnter={() => setHov(true)}
       onMouseLeave={() => setHov(false)}
       style={{
-        padding: "1.25rem 1.5rem", borderRadius: 10,
-        background: "var(--bfc-base-3)",
-        border: "1px solid var(--bfc-base-dimmed)",
-        borderTop: `3px solid ${color}`,
+        padding: "1.75rem 2rem", borderRadius: 12,
+        background: hov && onClick
+          ? `linear-gradient(135deg, ${color}10 0%, var(--bfc-base-3) 60%)`
+          : `linear-gradient(135deg, ${color}08 0%, var(--bfc-base-3) 50%)`,
+        border: `1px solid ${hov && onClick ? color + "40" : "var(--bfc-base-dimmed)"}`,
+        borderLeft: `5px solid ${color}`,
         cursor: onClick ? "pointer" : "default",
-        boxShadow: hov && onClick ? "0 4px 16px rgba(0,0,0,0.1)" : "0 1px 4px rgba(0,0,0,0.05)",
-        transform: hov && onClick ? "translateY(-2px)" : "none",
-        transition: "box-shadow 0.15s, transform 0.15s",
+        boxShadow: hov && onClick ? `0 6px 24px ${color}20` : "0 1px 4px rgba(0,0,0,0.05)",
+        transform: hov && onClick ? "translateY(-3px)" : "none",
+        transition: "box-shadow 0.18s, transform 0.18s, border-color 0.18s, background 0.18s",
         minWidth: 0,
+        position: "relative",
+        overflow: "hidden",
       }}
     >
-      <div style={{ fontSize: "2rem", fontWeight: 800, color, lineHeight: 1.1, marginBottom: "0.3rem" }}>{value}</div>
-      <div style={{ fontSize: "0.88rem", fontWeight: 600, color: "var(--bfc-base-c-1)" }}>{label}</div>
-      {sub && <div style={{ fontSize: "0.78rem", color: "var(--bfc-base-c-2)", marginTop: "0.2rem" }}>{sub}</div>}
+      <div style={{
+        position: "absolute", top: 0, right: 0,
+        width: 80, height: 80, borderRadius: "50%",
+        background: `${color}08`, transform: "translate(20px, -20px)",
+        pointerEvents: "none",
+      }} />
+      <div style={{ fontSize: "2.6rem", fontWeight: 800, color, lineHeight: 1, marginBottom: "0.4rem", letterSpacing: "-0.01em" }}>{value}</div>
+      <div style={{ fontSize: "0.92rem", fontWeight: 700, color: "var(--bfc-base-c-1)", marginBottom: "0.25rem" }}>{label}</div>
+      {sub && <div style={{ fontSize: "0.78rem", color: "var(--bfc-base-c-2)", lineHeight: 1.4 }}>{sub}</div>}
     </div>
   );
 }
@@ -1076,10 +1086,10 @@ function DashboardView({ riskMatrices, projectPlans, oppgaveLister, runbooks, me
   const firstMatrix = riskMatrices[0];
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: "1.75rem" }}>
+    <div style={{ display: "flex", flexDirection: "column", gap: "2rem" }}>
 
       {/* ── KPI row ─────────────────────────────────────────────────────────── */}
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: "1rem" }}>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: "1.25rem" }}>
         <KpiCard
           value={openRisks.length}
           label="Åpne risikoer"
@@ -1110,7 +1120,7 @@ function DashboardView({ riskMatrices, projectPlans, oppgaveLister, runbooks, me
       </div>
 
       {/* ── Middle: risk alerts + deadlines ────────────────────────────────── */}
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "1rem", alignItems: "start" }}>
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "1.25rem", alignItems: "start" }}>
 
         {/* Left: Top risks + mini heatmap */}
         <div style={{ display: "flex", flexDirection: "column", gap: "1rem" }}>
