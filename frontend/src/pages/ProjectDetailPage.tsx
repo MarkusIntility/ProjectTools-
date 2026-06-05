@@ -946,21 +946,21 @@ function DashboardView({ riskMatrices, projectPlans, oppgaveLister, runbooks, me
         title: m.title, date: new Date(m.date), done: false, context: mp.title,
       }))
     ),
-    ...projectPlans.filter((p) => p.source === "own").flatMap((p) =>
+    ...projectPlans.flatMap((p) =>
       p.tasks.filter((t) => t.end_date).map((t) => ({
         key: `task-${t.id}`, type: "task" as const,
         title: t.name, date: new Date(t.end_date!),
         done: t.percent_complete === 100, context: p.title,
       }))
     ),
-    ...oppgaveLister.filter((ol) => ol.source === "own").flatMap((ol) =>
+    ...oppgaveLister.flatMap((ol) =>
       ol.oppgaver.filter((o) => o.due_date).map((o) => ({
         key: `oppgave-${o.id}`, type: "oppgave" as const,
         title: o.name, date: new Date(o.due_date!),
         done: o.status === "done", context: ol.title,
       }))
     ),
-    ...runbooks.filter((rb) => rb.source === "own").flatMap((rb) =>
+    ...runbooks.flatMap((rb) =>
       rb.activities.filter((a) => a.end_date).map((a) => ({
         key: `activity-${a.id}`, type: "activity" as const,
         title: a.name, date: new Date(a.end_date!),
