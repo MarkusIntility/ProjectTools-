@@ -1,9 +1,10 @@
-import { useEffect, useState, useCallback } from "react";
+import React, { useEffect, useState, useCallback } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { Button, Input, Modal } from "@intility/bifrost-react";
 import { api, type Runbook, type RunbookActivity, type Template } from "../api/client";
 import { isMsalConfigured, msalInstance, PLANNER_SCOPES } from "../auth/msalConfig";
 import { fetchPlannerData, parsePlanId, taskStatus, type PlannerData, type PlannerTask } from "../auth/plannerService";
+import { probeOnboardApi } from "../auth/onboardService";
 import type { AccountInfo } from "@azure/msal-browser";
 
 // ─── Status config ────────────────────────────────────────────────────────────
@@ -455,7 +456,21 @@ export default function RunbookPage() {
 
       {/* Placeholder tabs */}
       {activeTab === "pcer" && (
-        <PlaceholderTab label="PCer" icon="💻" color="#1971C2" description="Her vil en liste over alle PCer i prosjektet vises — inkl. serienummer, bruker og status." />
+        <PlaceholderTab label="PCer" icon="💻" color="#1971C2" description="Her vil en liste over alle PCer i prosjektet vises — inkl. serienummer, bruker og status.">
+          {plannerAccount && (
+            <button
+              onClick={() => probeOnboardApi(msalInstance, plannerAccount)}
+              style={{
+                marginTop: "1.25rem", padding: "0.5rem 1.25rem",
+                borderRadius: 6, border: "1px solid #1971C2",
+                background: "#1971C218", color: "#1971C2",
+                fontSize: "0.82rem", fontWeight: 600, cursor: "pointer",
+              }}
+            >
+              Probe Onboard API (sjekk konsoll)
+            </button>
+          )}
+        </PlaceholderTab>
       )}
       {activeTab === "lokasjoner" && (
         <PlaceholderTab label="Lokasjoner" icon="📍" color="#F76707" description="Her vil en liste over alle lokasjoner i prosjektet vises — inkl. adresse og antall enheter." />
@@ -738,11 +753,12 @@ function DashboardTab({ runbook, plannerData, plannerLoading, srcColor, onGoToAc
 
 // ─── Placeholder tab ──────────────────────────────────────────────────────────
 
-function PlaceholderTab({ label, icon, color, description }: {
+function PlaceholderTab({ label, icon, color, description, children }: {
   label: string;
   icon: string;
   color: string;
   description: string;
+  children?: React.ReactNode;
 }) {
   return (
     <div style={{
@@ -755,6 +771,7 @@ function PlaceholderTab({ label, icon, color, description }: {
       <p style={{ fontSize: "0.9rem", color: "var(--bfc-base-c-2)", maxWidth: 400, margin: "0 auto" }}>
         {description}
       </p>
+      {children}
     </div>
   );
 }
