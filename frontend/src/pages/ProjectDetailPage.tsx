@@ -928,6 +928,7 @@ function DashboardView({ riskMatrices, projectPlans, oppgaveLister, runbooks, me
   // ── Planner deadlines (silent fetch) ─────────────────────────────────────────
   const [plannerDeadlines, setPlannerDeadlines] = useState<DeadlineItem[]>([]);
   const [plannerLoading, setPlannerLoading] = useState(false);
+  const [komendeExpanded, setKomendeExpanded] = useState(false);
 
   const fetchPlannerDeadlines = useCallback(async () => {
     if (!isMsalConfigured) return;
@@ -1182,11 +1183,32 @@ function DashboardView({ riskMatrices, projectPlans, oppgaveLister, runbooks, me
         <div style={{ borderRadius: 10, background: "var(--bfc-base-3)", border: "1px solid var(--bfc-base-dimmed)", padding: "1.25rem" }}>
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "1rem" }}>
             <h3 className="bf-h4" style={{ margin: 0 }}>Kommende (14 dager)</h3>
-            {plannerLoading && (
-              <span style={{ fontSize: "0.72rem", color: "#0078D4", fontWeight: 500 }}>
-                ↻ Laster Planner…
-              </span>
-            )}
+            <div style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
+              {plannerLoading && (
+                <span style={{ fontSize: "0.72rem", color: "#0078D4", fontWeight: 500 }}>
+                  ↻ Laster Planner…
+                </span>
+              )}
+              <button
+                onClick={() => setKomendeExpanded(true)}
+                title="Vis alle"
+                style={{
+                  background: "none", border: "1px solid var(--bfc-base-dimmed)",
+                  borderRadius: 6, cursor: "pointer", padding: "3px 8px",
+                  color: "var(--bfc-base-c-2)", fontSize: "0.78rem", fontWeight: 500,
+                  display: "flex", alignItems: "center", gap: "0.3rem",
+                  transition: "border-color 0.15s, color 0.15s",
+                }}
+                onMouseEnter={(e) => { e.currentTarget.style.borderColor = "#4C6EF5"; e.currentTarget.style.color = "#4C6EF5"; }}
+                onMouseLeave={(e) => { e.currentTarget.style.borderColor = "var(--bfc-base-dimmed)"; e.currentTarget.style.color = "var(--bfc-base-c-2)"; }}
+              >
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+                  <polyline points="15 3 21 3 21 9"/><polyline points="9 21 3 21 3 15"/>
+                  <line x1="21" y1="3" x2="14" y2="10"/><line x1="3" y1="21" x2="10" y2="14"/>
+                </svg>
+                Utvid
+              </button>
+            </div>
           </div>
           {deadlines.length === 0 && !plannerLoading ? (
             <p style={{ color: "var(--bfc-base-c-2)", fontSize: "0.9rem", margin: 0 }}>
@@ -1258,6 +1280,123 @@ function DashboardView({ riskMatrices, projectPlans, oppgaveLister, runbooks, me
           </div>
         )}
       </div>
+
+      {/* ── Kommende expanded overlay ─────────────────────────────────────────── */}
+      {komendeExpanded && (
+        <div
+          onClick={() => setKomendeExpanded(false)}
+          style={{
+            position: "fixed", inset: 0, zIndex: 1000,
+            background: "rgba(0,0,0,0.45)",
+            display: "flex", alignItems: "center", justifyContent: "center",
+            backdropFilter: "blur(2px)",
+          }}
+        >
+          <div
+            onClick={(e) => e.stopPropagation()}
+            style={{
+              background: "var(--bfc-base-3)", borderRadius: 14,
+              border: "1px solid var(--bfc-base-dimmed)",
+              width: "min(700px, 95vw)", maxHeight: "80vh",
+              display: "flex", flexDirection: "column",
+              boxShadow: "0 24px 64px rgba(0,0,0,0.22)",
+            }}
+          >
+            {/* Header */}
+            <div style={{
+              display: "flex", justifyContent: "space-between", alignItems: "center",
+              padding: "1.25rem 1.5rem", borderBottom: "1px solid var(--bfc-base-dimmed)", flexShrink: 0,
+            }}>
+              <div style={{ display: "flex", alignItems: "center", gap: "0.75rem" }}>
+                <h3 className="bf-h3" style={{ margin: 0 }}>Kommende (14 dager)</h3>
+                <span style={{
+                  fontSize: "0.78rem", fontWeight: 600, padding: "2px 10px",
+                  borderRadius: 20, background: "#4C6EF518", color: "#4C6EF5",
+                }}>
+                  {deadlines.length} {deadlines.length === 1 ? "aktivitet" : "aktiviteter"}
+                </span>
+                {plannerLoading && (
+                  <span style={{ fontSize: "0.72rem", color: "#0078D4", fontWeight: 500 }}>↻ Laster Planner…</span>
+                )}
+              </div>
+              <button
+                onClick={() => setKomendeExpanded(false)}
+                style={{
+                  background: "none", border: "1px solid var(--bfc-base-dimmed)",
+                  borderRadius: 6, cursor: "pointer", padding: "4px 12px",
+                  color: "var(--bfc-base-c-2)", fontSize: "0.85rem", fontWeight: 500,
+                }}
+                onMouseEnter={(e) => { e.currentTarget.style.borderColor = "#E03131"; e.currentTarget.style.color = "#E03131"; }}
+                onMouseLeave={(e) => { e.currentTarget.style.borderColor = "var(--bfc-base-dimmed)"; e.currentTarget.style.color = "var(--bfc-base-c-2)"; }}
+              >
+                ✕ Lukk
+              </button>
+            </div>
+
+            {/* Body */}
+            <div style={{ overflowY: "auto", padding: "1.25rem 1.5rem", display: "flex", flexDirection: "column", gap: "0.4rem" }}>
+              {deadlines.length === 0 && !plannerLoading ? (
+                <p style={{ color: "var(--bfc-base-c-2)", fontSize: "0.9rem", margin: 0 }}>
+                  Ingen frister de neste 14 dagene.
+                </p>
+              ) : (
+                deadlines.map((d) => {
+                  const cfg = TYPE_CONFIG[d.type];
+                  return (
+                    <div key={d.key} style={{
+                      display: "flex", alignItems: "center", gap: "0.5rem",
+                      padding: "0.65rem 1rem", borderRadius: 8,
+                      background: d.done ? "var(--bfc-base-2)" : "var(--bfc-base-3)",
+                      border: "1px solid var(--bfc-base-dimmed)",
+                      opacity: d.done ? 0.55 : 1,
+                      minWidth: 0,
+                    }}>
+                      <span style={{
+                        fontSize: "0.68rem", fontWeight: 600, padding: "1px 7px",
+                        borderRadius: 20, background: `${cfg.color}18`, color: cfg.color,
+                        flexShrink: 0, whiteSpace: "nowrap",
+                      }}>
+                        {cfg.label}
+                      </span>
+                      {d.source === "planner" && (
+                        <span style={{
+                          fontSize: "0.65rem", fontWeight: 600, padding: "1px 6px",
+                          borderRadius: 20, background: "#0078D418", color: "#0078D4",
+                          flexShrink: 0, whiteSpace: "nowrap",
+                        }}>
+                          Planner
+                        </span>
+                      )}
+                      <span style={{
+                        flex: 1, minWidth: 0, fontSize: "0.9rem",
+                        overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
+                        textDecoration: d.done ? "line-through" : "none",
+                        color: d.done ? "var(--bfc-base-c-3)" : "inherit",
+                      }}>
+                        {d.title}
+                      </span>
+                      <div style={{ flexShrink: 0, textAlign: "right", minWidth: 100 }}>
+                        <div style={{
+                          fontSize: "0.82rem", fontWeight: 600, whiteSpace: "nowrap",
+                          color: d.date.getTime() - now.getTime() < 86400000 ? "#E03131" : "var(--bfc-base-c-1)",
+                        }}>
+                          {relativeDateLabel(d.date)}
+                        </div>
+                        <div style={{
+                          fontSize: "0.72rem", color: "var(--bfc-base-c-3)",
+                          whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", maxWidth: 150,
+                        }}>
+                          {d.context}
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })
+              )}
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
