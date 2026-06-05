@@ -39,6 +39,13 @@ interface GanttPhase {
   done: number;
 }
 
+interface GanttMilestone {
+  name: string;
+  date: Date;
+  color: string;
+  phaseName: string;
+}
+
 const GANTT_COLORS = [
   "#7950F2",
   "#0CA678",
@@ -877,7 +884,7 @@ function PlannerView({
 
       {data && !loading && (
         view === "gantt"
-          ? <GanttView phases={extractPlannerGanttPhases(data)} />
+          ? <PlannerGanttView data={data} />
           : <PlannerTaskGrid data={data} />
       )}
     </div>
@@ -1219,9 +1226,15 @@ function extractOwnGanttPhases(tasks: ProjectPlanTask[]): GanttPhase[] {
   return phases;
 }
 
-function extractPlannerGanttPhases(data: PlannerData): GanttPhase[] {
+function isMilestone(t: PlannerTask): boolean {
+  if (!t.startDateTime || !t.dueDateTime) return false;
+  return new Date(t.startDateTime).toDateString() === new Date(t.dueDateTime).toDateString();
+}
+
+function extractPlannerGanttPhases(data: PlannerData): { phases: GanttPhase[]; milestones: GanttMilestone[] } {
   const isHierarchical = data.tasks.some((t) => (t.outlineLevel ?? 1) > 1);
   const phases: GanttPhase[] = [];
+  const milestones: GanttMilestone[] = [];
 
   if (isHierarchical) {
     const l1Tasks = data.tasks.filter((t) => (t.outlineLevel ?? 1) === 1);
@@ -1233,6 +1246,16 @@ function extractPlannerGanttPhases(data: PlannerData): GanttPhase[] {
     }
     l1Tasks.forEach((l1, i) => {
       const children = l2ByL1[l1.id] ?? [];
+      const color = GANTT_COLORS[i % GANTT_COLORS.length];
+
+      // Collect 0-day tasks as milestones
+      for (const child of children) {
+        if (isMilestone(child)) {
+          milestones.push({ name: child.title, date: new Date(child.startDateTime!), color, phaseName: l1.title });
+        }
+      }
+
+      const regularChildren = children.filter((t) => !isMilestone(t));
 
       // Use the phase's own dates if set — these match what Planner shows on the phase header row
       if (l1.startDateTime && l1.dueDateTime) {
@@ -1240,16 +1263,16 @@ function extractPlannerGanttPhases(data: PlannerData): GanttPhase[] {
           name: l1.title,
           start: new Date(l1.startDateTime),
           end: new Date(l1.dueDateTime),
-          color: GANTT_COLORS[i % GANTT_COLORS.length],
+          color,
           taskCount: children.length,
           done: children.filter((t) => t.percentComplete === 100).length,
         });
         return;
       }
 
-      // Fallback: derive range from child task dates
-      const starts = children.filter((t) => t.startDateTime).map((t) => new Date(t.startDateTime!).getTime());
-      const ends = children.filter((t) => t.dueDateTime).map((t) => new Date(t.dueDateTime!).getTime());
+      // Fallback: derive range from regular (non-milestone) child task dates
+      const starts = regularChildren.filter((t) => t.startDateTime).map((t) => new Date(t.startDateTime!).getTime());
+      const ends = regularChildren.filter((t) => t.dueDateTime).map((t) => new Date(t.dueDateTime!).getTime());
       if (starts.length === 0 && ends.length === 0) return;
       const minStart = starts.length > 0 ? Math.min(...starts) : Math.min(...ends);
       const maxEnd = ends.length > 0 ? Math.max(...ends) : Math.max(...starts);
@@ -1257,7 +1280,7 @@ function extractPlannerGanttPhases(data: PlannerData): GanttPhase[] {
         name: l1.title,
         start: new Date(minStart),
         end: new Date(maxEnd),
-        color: GANTT_COLORS[i % GANTT_COLORS.length],
+        color,
         taskCount: children.length,
         done: children.filter((t) => t.percentComplete === 100).length,
       });
@@ -1280,7 +1303,12 @@ function extractPlannerGanttPhases(data: PlannerData): GanttPhase[] {
       });
     });
   }
-  return phases;
+  return { phases, milestones };
+}
+
+function PlannerGanttView({ data }: { data: PlannerData }) {
+  const { phases, milestones } = extractPlannerGanttPhases(data);
+  return <GanttView phases={phases} milestones={milestones} />;
 }
 
 // ─── Gantt phase sorting ──────────────────────────────────────────────────────
@@ -1302,7 +1330,7 @@ function phasePriority(name: string): number {
 
 // ─── Gantt view ───────────────────────────────────────────────────────────────
 
-function GanttView({ phases }: { phases: GanttPhase[] }) {
+function GanttView({ phases, milestones = [] }: { phases: GanttPhase[]; milestones?: GanttMilestone[] }) {
   if (phases.length === 0) {
     return (
       <div style={{ textAlign: "center", padding: "3rem", border: "2px dashed var(--bfc-base-dimmed)", borderRadius: 8, color: "var(--bfc-base-c-2)" }}>
@@ -1320,8 +1348,13 @@ function GanttView({ phases }: { phases: GanttPhase[] }) {
 
   const MS_PER_DAY = 86_400_000;
   const pad = 2 * MS_PER_DAY;
-  const rangeStartMs = Math.min(...sorted.map((p) => p.start.getTime())) - pad;
-  const rangeEndMs = Math.max(...sorted.map((p) => p.end.getTime())) + pad;
+  const allMs = [
+    ...sorted.map((p) => p.start.getTime()),
+    ...sorted.map((p) => p.end.getTime()),
+    ...milestones.map((m) => m.date.getTime()),
+  ];
+  const rangeStartMs = Math.min(...allMs) - pad;
+  const rangeEndMs = Math.max(...allMs) + pad;
   const totalMs = rangeEndMs - rangeStartMs;
   const totalDays = Math.ceil(totalMs / MS_PER_DAY);
   const totalWeeks = Math.ceil(totalDays / 7);
@@ -1436,6 +1469,63 @@ function GanttView({ phases }: { phases: GanttPhase[] }) {
               </div>
             );
           })}
+
+          {/* Milestone rows */}
+          {milestones.length > 0 && (
+            <>
+              <div style={{ height: 1, background: "var(--bfc-base-dimmed)", margin: "0.35rem 0 0.5rem" }} />
+              {[...milestones]
+                .sort((a, b) => a.date.getTime() - b.date.getTime())
+                .map((m) => (
+                  <div key={`${m.phaseName}-${m.name}`} style={{ display: "flex", alignItems: "center", marginBottom: "0.35rem" }}>
+                    <div style={{
+                      width: 140, flexShrink: 0,
+                      fontSize: "0.78rem", fontWeight: 500,
+                      color: "var(--bfc-base-c-2)",
+                      paddingRight: "0.75rem",
+                      overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
+                      display: "flex", alignItems: "center", gap: "0.35rem",
+                    }}>
+                      <span style={{
+                        display: "inline-block", width: 8, height: 8, flexShrink: 0,
+                        background: m.color, transform: "rotate(45deg)",
+                      }} />
+                      {m.name}
+                    </div>
+                    <div style={{ flex: 1, position: "relative", height: 28 }}>
+                      {ticks.map((t, i) => (
+                        <div key={i} style={{
+                          position: "absolute", left: `${toPct(t)}%`,
+                          top: 0, bottom: 0, width: 1,
+                          background: "var(--bfc-base-dimmed)", pointerEvents: "none",
+                        }} />
+                      ))}
+                      {/* Diamond marker */}
+                      <div style={{
+                        position: "absolute",
+                        left: `${toPct(m.date)}%`,
+                        top: "50%",
+                        transform: "translate(-50%, -50%) rotate(45deg)",
+                        width: 13, height: 13,
+                        background: m.color,
+                        zIndex: 1,
+                      }} />
+                      {/* Date label */}
+                      <span style={{
+                        position: "absolute",
+                        left: `calc(${toPct(m.date)}% + 13px)`,
+                        top: "50%",
+                        transform: "translateY(-50%)",
+                        fontSize: "0.7rem", fontWeight: 600,
+                        color: m.color, whiteSpace: "nowrap",
+                      }}>
+                        {fmt(m.date)}
+                      </span>
+                    </div>
+                  </div>
+                ))}
+            </>
+          )}
         </div>
       </div>
 
