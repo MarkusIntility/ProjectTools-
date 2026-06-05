@@ -1344,7 +1344,7 @@ function DashboardView({ riskMatrices, projectPlans, oppgaveLister, runbooks, me
                   const cfg = TYPE_CONFIG[d.type];
                   return (
                     <div key={d.key} style={{
-                      display: "flex", alignItems: "center", gap: "0.5rem",
+                      display: "flex", alignItems: "flex-start", gap: "0.5rem",
                       padding: "0.65rem 1rem", borderRadius: 8,
                       background: d.done ? "var(--bfc-base-2)" : "var(--bfc-base-3)",
                       border: "1px solid var(--bfc-base-dimmed)",
@@ -1354,7 +1354,7 @@ function DashboardView({ riskMatrices, projectPlans, oppgaveLister, runbooks, me
                       <span style={{
                         fontSize: "0.68rem", fontWeight: 600, padding: "1px 7px",
                         borderRadius: 20, background: `${cfg.color}18`, color: cfg.color,
-                        flexShrink: 0, whiteSpace: "nowrap",
+                        flexShrink: 0, whiteSpace: "nowrap", marginTop: 2,
                       }}>
                         {cfg.label}
                       </span>
@@ -1362,20 +1362,21 @@ function DashboardView({ riskMatrices, projectPlans, oppgaveLister, runbooks, me
                         <span style={{
                           fontSize: "0.65rem", fontWeight: 600, padding: "1px 6px",
                           borderRadius: 20, background: "#0078D418", color: "#0078D4",
-                          flexShrink: 0, whiteSpace: "nowrap",
+                          flexShrink: 0, whiteSpace: "nowrap", marginTop: 2,
                         }}>
                           Planner
                         </span>
                       )}
                       <span style={{
                         flex: 1, minWidth: 0, fontSize: "0.9rem",
-                        overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
+                        lineHeight: 1.45,
                         textDecoration: d.done ? "line-through" : "none",
                         color: d.done ? "var(--bfc-base-c-3)" : "inherit",
+                        wordBreak: "break-word",
                       }}>
                         {d.title}
                       </span>
-                      <div style={{ flexShrink: 0, textAlign: "right", minWidth: 100 }}>
+                      <div style={{ flexShrink: 0, textAlign: "right", minWidth: 80, marginTop: 1 }}>
                         <div style={{
                           fontSize: "0.82rem", fontWeight: 600, whiteSpace: "nowrap",
                           color: d.date.getTime() - now.getTime() < 86400000 ? "#E03131" : "var(--bfc-base-c-1)",
@@ -1384,7 +1385,7 @@ function DashboardView({ riskMatrices, projectPlans, oppgaveLister, runbooks, me
                         </div>
                         <div style={{
                           fontSize: "0.72rem", color: "var(--bfc-base-c-3)",
-                          whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", maxWidth: 150,
+                          whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", maxWidth: 120,
                         }}>
                           {d.context}
                         </div>
