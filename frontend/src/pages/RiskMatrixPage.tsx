@@ -57,6 +57,7 @@ export default function RiskMatrixPage() {
   const [form, setForm] = useState<RiskForm>(emptyRisk);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
+  const [residualEnabled, setResidualEnabled] = useState(false);
 
   const [templateModal, setTemplateModal] = useState(false);
   const [templateMode, setTemplateMode] = useState<"new" | "existing">("new");
@@ -72,6 +73,8 @@ export default function RiskMatrixPage() {
   }, [projectId, matrixId]);
 
   function openEdit(risk: RiskItem) {
+    const rp = risk.residual_probability ?? 0;
+    const rc = risk.residual_consequence ?? 0;
     setForm({
       description: risk.description,
       probability: risk.probability,
@@ -81,9 +84,10 @@ export default function RiskMatrixPage() {
       status: risk.status,
       fagomrade: risk.fagomrade ?? "",
       risk_owner: risk.risk_owner ?? "",
-      residual_probability: risk.residual_probability ?? 0,
-      residual_consequence: risk.residual_consequence ?? 0,
+      residual_probability: rp > 0 ? rp : 1,
+      residual_consequence: rc > 0 ? rc : 1,
     });
+    setResidualEnabled(rp > 0 || rc > 0);
     setEditingId(risk.id);
     setShowForm(true);
   }
@@ -98,8 +102,8 @@ export default function RiskMatrixPage() {
         owner: form.owner || null,
         fagomrade: form.fagomrade || null,
         risk_owner: form.risk_owner || null,
-        residual_probability: form.residual_probability || null,
-        residual_consequence: form.residual_consequence || null,
+        residual_probability: residualEnabled ? form.residual_probability : null,
+        residual_consequence: residualEnabled ? form.residual_consequence : null,
       };
       if (editingId) {
         const updated = await api.riskMatrices.updateRisk(projectId, matrixId, editingId, data);
@@ -162,7 +166,7 @@ export default function RiskMatrixPage() {
         <h1 className="bf-h2">{matrix.title}</h1>
         <div style={{ display: "flex", gap: "0.5rem" }}>
           <Button variant="outline" onClick={openTemplateModal}>Lagre som mal</Button>
-          <Button variant="filled" onClick={() => { setShowForm(true); setEditingId(null); setForm(emptyRisk); }}>+ Legg til risiko</Button>
+          <Button variant="filled" onClick={() => { setShowForm(true); setEditingId(null); setForm(emptyRisk); setResidualEnabled(false); }}>+ Legg til risiko</Button>
         </div>
       </div>
 
@@ -221,13 +225,13 @@ export default function RiskMatrixPage() {
                 <label className="bf-label">Sannsynlighet (1–5): {form.probability}</label>
                 <input type="range" min={1} max={5} value={form.probability}
                   onChange={(e) => setForm({ ...form, probability: Number(e.target.value) })}
-                  style={{ width: "100%" }} />
+                  style={{ width: "100%", accentColor: "#1971C2", cursor: "pointer" }} />
               </div>
               <div>
                 <label className="bf-label">Konsekvens (1–5): {form.consequence}</label>
                 <input type="range" min={1} max={5} value={form.consequence}
                   onChange={(e) => setForm({ ...form, consequence: Number(e.target.value) })}
-                  style={{ width: "100%" }} />
+                  style={{ width: "100%", accentColor: "#1971C2", cursor: "pointer" }} />
               </div>
             </div>
           </div>
@@ -237,32 +241,40 @@ export default function RiskMatrixPage() {
 
           {/* Residual risk scoring */}
           <div style={{ borderTop: "1px solid var(--bfc-base-dimmed)", paddingTop: "0.75rem" }}>
-            <div style={{ fontSize: "0.8rem", fontWeight: 600, color: "var(--bfc-base-c-2)", marginBottom: "0.5rem", textTransform: "uppercase", letterSpacing: "0.05em" }}>
-              Restrisiko (etter tiltak)
+            <div style={{ display: "flex", alignItems: "center", gap: "0.75rem", marginBottom: "0.75rem" }}>
+              <div style={{ fontSize: "0.8rem", fontWeight: 600, color: "var(--bfc-base-c-2)", textTransform: "uppercase", letterSpacing: "0.05em" }}>
+                Restrisiko (etter tiltak)
+              </div>
+              <label style={{ display: "flex", alignItems: "center", gap: "0.4rem", cursor: "pointer", fontSize: "0.85rem", color: "var(--bfc-base-c-2)", fontWeight: 400, userSelect: "none" }}>
+                <input
+                  type="checkbox"
+                  checked={residualEnabled}
+                  onChange={(e) => {
+                    setResidualEnabled(e.target.checked);
+                    if (!e.target.checked) setForm((f) => ({ ...f, residual_probability: 1, residual_consequence: 1 }));
+                  }}
+                  style={{ cursor: "pointer", accentColor: "#1971C2" }}
+                />
+                Vurdert
+              </label>
             </div>
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "1rem" }}>
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "1rem", opacity: residualEnabled ? 1 : 0.4, pointerEvents: residualEnabled ? "auto" : "none" }}>
               <div>
-                <label className="bf-label">
-                  Oppdatert sannsynlighet (1–5): {form.residual_probability || "–"}
-                </label>
-                <input type="range" min={0} max={5} value={form.residual_probability}
+                <label className="bf-label">Oppdatert sannsynlighet (1–5): {residualEnabled ? form.residual_probability : "–"}</label>
+                <input type="range" min={1} max={5} value={form.residual_probability}
                   onChange={(e) => setForm({ ...form, residual_probability: Number(e.target.value) })}
-                  style={{ width: "100%" }} />
-                <span style={{ fontSize: "0.75rem", color: "var(--bfc-base-c-3)" }}>0 = ikke vurdert</span>
+                  style={{ width: "100%", accentColor: "#1971C2", cursor: "pointer" }} />
               </div>
               <div>
-                <label className="bf-label">
-                  Oppdatert konsekvens (1–5): {form.residual_consequence || "–"}
-                </label>
-                <input type="range" min={0} max={5} value={form.residual_consequence}
+                <label className="bf-label">Oppdatert konsekvens (1–5): {residualEnabled ? form.residual_consequence : "–"}</label>
+                <input type="range" min={1} max={5} value={form.residual_consequence}
                   onChange={(e) => setForm({ ...form, residual_consequence: Number(e.target.value) })}
-                  style={{ width: "100%" }} />
-                <span style={{ fontSize: "0.75rem", color: "var(--bfc-base-c-3)" }}>0 = ikke vurdert</span>
+                  style={{ width: "100%", accentColor: "#1971C2", cursor: "pointer" }} />
               </div>
             </div>
-            {form.residual_probability > 0 && form.residual_consequence > 0 && (
+            {residualEnabled && (
               <div style={{ marginTop: "0.5rem", fontSize: "0.85rem", color: "var(--bfc-base-c-2)" }}>
-                Restrisiko-score: {" "}
+                Restrisiko-score:{" "}
                 <span style={{
                   background: RISK_COLORS[riskLevel(form.residual_probability * form.residual_consequence)],
                   color: "#fff", borderRadius: 4, padding: "1px 8px", fontWeight: 600,
