@@ -1233,9 +1233,23 @@ function extractPlannerGanttPhases(data: PlannerData): GanttPhase[] {
     }
     l1Tasks.forEach((l1, i) => {
       const children = l2ByL1[l1.id] ?? [];
-      const allT = [l1, ...children];
-      const starts = allT.filter((t) => t.startDateTime).map((t) => new Date(t.startDateTime!).getTime());
-      const ends = allT.filter((t) => t.dueDateTime).map((t) => new Date(t.dueDateTime!).getTime());
+
+      // Use the phase's own dates if set — these match what Planner shows on the phase header row
+      if (l1.startDateTime && l1.dueDateTime) {
+        phases.push({
+          name: l1.title,
+          start: new Date(l1.startDateTime),
+          end: new Date(l1.dueDateTime),
+          color: GANTT_COLORS[i % GANTT_COLORS.length],
+          taskCount: children.length,
+          done: children.filter((t) => t.percentComplete === 100).length,
+        });
+        return;
+      }
+
+      // Fallback: derive range from child task dates
+      const starts = children.filter((t) => t.startDateTime).map((t) => new Date(t.startDateTime!).getTime());
+      const ends = children.filter((t) => t.dueDateTime).map((t) => new Date(t.dueDateTime!).getTime());
       if (starts.length === 0 && ends.length === 0) return;
       const minStart = starts.length > 0 ? Math.min(...starts) : Math.min(...ends);
       const maxEnd = ends.length > 0 ? Math.max(...ends) : Math.max(...starts);
