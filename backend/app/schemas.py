@@ -29,6 +29,10 @@ class RiskItemBase(BaseModel):
     mitigation: str | None = None
     owner: str | None = None
     status: RiskStatus = RiskStatus.open
+    fagomrade: str | None = None
+    risk_owner: str | None = None
+    residual_probability: int | None = None
+    residual_consequence: int | None = None
 
 
 class RiskItemCreate(RiskItemBase):
@@ -39,6 +43,7 @@ class RiskItemResponse(RiskItemBase):
     id: str
     matrix_id: str
     risk_score: int
+    residual_score: int | None = None
 
     model_config = {"from_attributes": True}
 

@@ -30,6 +30,10 @@ interface RiskForm {
   mitigation: string;
   owner: string;
   status: RiskStatus;
+  fagomrade: string;
+  risk_owner: string;
+  residual_probability: number;
+  residual_consequence: number;
 }
 
 const emptyRisk: RiskForm = {
@@ -39,6 +43,10 @@ const emptyRisk: RiskForm = {
   mitigation: "",
   owner: "",
   status: "open",
+  fagomrade: "",
+  risk_owner: "",
+  residual_probability: 0,
+  residual_consequence: 0,
 };
 
 export default function RiskMatrixPage() {
@@ -71,6 +79,10 @@ export default function RiskMatrixPage() {
       mitigation: risk.mitigation ?? "",
       owner: risk.owner ?? "",
       status: risk.status,
+      fagomrade: risk.fagomrade ?? "",
+      risk_owner: risk.risk_owner ?? "",
+      residual_probability: risk.residual_probability ?? 0,
+      residual_consequence: risk.residual_consequence ?? 0,
     });
     setEditingId(risk.id);
     setShowForm(true);
@@ -84,6 +96,10 @@ export default function RiskMatrixPage() {
         ...form,
         mitigation: form.mitigation || null,
         owner: form.owner || null,
+        fagomrade: form.fagomrade || null,
+        risk_owner: form.risk_owner || null,
+        residual_probability: form.residual_probability || null,
+        residual_consequence: form.residual_consequence || null,
       };
       if (editingId) {
         const updated = await api.riskMatrices.updateRisk(projectId, matrixId, editingId, data);
@@ -134,7 +150,7 @@ export default function RiskMatrixPage() {
   if (!matrix) return <div style={{ padding: "2rem" }}>Laster...</div>;
 
   return (
-    <div style={{ maxWidth: 1100, margin: "0 auto", padding: "2rem" }}>
+    <div style={{ maxWidth: 1400, margin: "0 auto", padding: "2rem" }}>
       <button
         onClick={() => navigate(`/projects/${projectId}`)}
         style={{ background: "none", border: "none", cursor: "pointer", color: "var(--bfc-base-c-2)", marginBottom: "1rem" }}
@@ -187,23 +203,76 @@ export default function RiskMatrixPage() {
       {showForm && (
         <div style={{ background: "var(--bfc-base-3)", borderRadius: 8, padding: "1.5rem", marginBottom: "1.5rem", display: "grid", gap: "1rem" }}>
           <h3 className="bf-h4">{editingId ? "Rediger risiko" : "Ny risiko"}</h3>
+
           <Input label="Beskrivelse" value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} />
+
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "1rem" }}>
-            <div>
-              <label className="bf-label">Sannsynlighet (1–5): {form.probability}</label>
-              <input type="range" min={1} max={5} value={form.probability}
-                onChange={(e) => setForm({ ...form, probability: Number(e.target.value) })}
-                style={{ width: "100%" }} />
+            <Input label="Fagområde" value={form.fagomrade} onChange={(e) => setForm({ ...form, fagomrade: e.target.value })} placeholder="f.eks. Workplace, Network" />
+            <Input label="Risiko eier" value={form.risk_owner} onChange={(e) => setForm({ ...form, risk_owner: e.target.value })} placeholder="Navn eller rolle" />
+          </div>
+
+          {/* Initial risk scoring */}
+          <div style={{ borderTop: "1px solid var(--bfc-base-dimmed)", paddingTop: "0.75rem" }}>
+            <div style={{ fontSize: "0.8rem", fontWeight: 600, color: "var(--bfc-base-c-2)", marginBottom: "0.5rem", textTransform: "uppercase", letterSpacing: "0.05em" }}>
+              Risikovurdering (før tiltak)
             </div>
-            <div>
-              <label className="bf-label">Konsekvens (1–5): {form.consequence}</label>
-              <input type="range" min={1} max={5} value={form.consequence}
-                onChange={(e) => setForm({ ...form, consequence: Number(e.target.value) })}
-                style={{ width: "100%" }} />
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "1rem" }}>
+              <div>
+                <label className="bf-label">Sannsynlighet (1–5): {form.probability}</label>
+                <input type="range" min={1} max={5} value={form.probability}
+                  onChange={(e) => setForm({ ...form, probability: Number(e.target.value) })}
+                  style={{ width: "100%" }} />
+              </div>
+              <div>
+                <label className="bf-label">Konsekvens (1–5): {form.consequence}</label>
+                <input type="range" min={1} max={5} value={form.consequence}
+                  onChange={(e) => setForm({ ...form, consequence: Number(e.target.value) })}
+                  style={{ width: "100%" }} />
+              </div>
             </div>
           </div>
+
           <Input label="Tiltak" value={form.mitigation} onChange={(e) => setForm({ ...form, mitigation: e.target.value })} />
-          <Input label="Ansvarlig" value={form.owner} onChange={(e) => setForm({ ...form, owner: e.target.value })} />
+          <Input label="Ansvarlig (tiltak)" value={form.owner} onChange={(e) => setForm({ ...form, owner: e.target.value })} />
+
+          {/* Residual risk scoring */}
+          <div style={{ borderTop: "1px solid var(--bfc-base-dimmed)", paddingTop: "0.75rem" }}>
+            <div style={{ fontSize: "0.8rem", fontWeight: 600, color: "var(--bfc-base-c-2)", marginBottom: "0.5rem", textTransform: "uppercase", letterSpacing: "0.05em" }}>
+              Restrisiko (etter tiltak)
+            </div>
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "1rem" }}>
+              <div>
+                <label className="bf-label">
+                  Oppdatert sannsynlighet (1–5): {form.residual_probability || "–"}
+                </label>
+                <input type="range" min={0} max={5} value={form.residual_probability}
+                  onChange={(e) => setForm({ ...form, residual_probability: Number(e.target.value) })}
+                  style={{ width: "100%" }} />
+                <span style={{ fontSize: "0.75rem", color: "var(--bfc-base-c-3)" }}>0 = ikke vurdert</span>
+              </div>
+              <div>
+                <label className="bf-label">
+                  Oppdatert konsekvens (1–5): {form.residual_consequence || "–"}
+                </label>
+                <input type="range" min={0} max={5} value={form.residual_consequence}
+                  onChange={(e) => setForm({ ...form, residual_consequence: Number(e.target.value) })}
+                  style={{ width: "100%" }} />
+                <span style={{ fontSize: "0.75rem", color: "var(--bfc-base-c-3)" }}>0 = ikke vurdert</span>
+              </div>
+            </div>
+            {form.residual_probability > 0 && form.residual_consequence > 0 && (
+              <div style={{ marginTop: "0.5rem", fontSize: "0.85rem", color: "var(--bfc-base-c-2)" }}>
+                Restrisiko-score: {" "}
+                <span style={{
+                  background: RISK_COLORS[riskLevel(form.residual_probability * form.residual_consequence)],
+                  color: "#fff", borderRadius: 4, padding: "1px 8px", fontWeight: 600,
+                }}>
+                  {form.residual_probability * form.residual_consequence}
+                </span>
+              </div>
+            )}
+          </div>
+
           <div>
             <label className="bf-label">Status</label>
             <select
@@ -230,13 +299,16 @@ export default function RiskMatrixPage() {
       ) : (
         <table style={{ width: "100%", borderCollapse: "collapse" }}>
           <thead>
-            <tr style={{ textAlign: "left", borderBottom: "2px solid var(--bfc-base-dimmed)" }}>
+            <tr style={{ textAlign: "left", borderBottom: "2px solid var(--bfc-base-dimmed)", fontSize: "0.85rem" }}>
               <th style={{ padding: "0.5rem" }}>Beskrivelse</th>
+              <th style={{ padding: "0.5rem" }}>Fagområde</th>
+              <th style={{ padding: "0.5rem" }}>Risiko eier</th>
               <th style={{ padding: "0.5rem" }}>S</th>
               <th style={{ padding: "0.5rem" }}>K</th>
               <th style={{ padding: "0.5rem" }}>Score</th>
               <th style={{ padding: "0.5rem" }}>Tiltak</th>
               <th style={{ padding: "0.5rem" }}>Ansvarlig</th>
+              <th style={{ padding: "0.5rem" }}>Restrisiko</th>
               <th style={{ padding: "0.5rem" }}>Status</th>
               <th style={{ padding: "0.5rem" }}></th>
             </tr>
@@ -244,9 +316,16 @@ export default function RiskMatrixPage() {
           <tbody>
             {matrix.risks.map((risk) => {
               const level = riskLevel(risk.risk_score);
+              const residualLevel = risk.residual_score ? riskLevel(risk.residual_score) : null;
               return (
                 <tr key={risk.id} style={{ borderBottom: "1px solid var(--bfc-base-dimmed)" }}>
                   <td style={{ padding: "0.5rem" }}>{risk.description}</td>
+                  <td style={{ padding: "0.5rem", color: risk.fagomrade ? "inherit" : "var(--bfc-base-c-3)" }}>
+                    {risk.fagomrade ?? "–"}
+                  </td>
+                  <td style={{ padding: "0.5rem", color: risk.risk_owner ? "inherit" : "var(--bfc-base-c-3)" }}>
+                    {risk.risk_owner ?? "–"}
+                  </td>
                   <td style={{ padding: "0.5rem" }}>{risk.probability}</td>
                   <td style={{ padding: "0.5rem" }}>{risk.consequence}</td>
                   <td style={{ padding: "0.5rem" }}>
@@ -256,6 +335,20 @@ export default function RiskMatrixPage() {
                   </td>
                   <td style={{ padding: "0.5rem" }}>{risk.mitigation ?? "–"}</td>
                   <td style={{ padding: "0.5rem" }}>{risk.owner ?? "–"}</td>
+                  <td style={{ padding: "0.5rem" }}>
+                    {residualLevel && risk.residual_score ? (
+                      <div>
+                        <span style={{ background: RISK_COLORS[residualLevel], color: "#fff", borderRadius: 4, padding: "2px 8px", fontWeight: 600 }}>
+                          {risk.residual_score}
+                        </span>
+                        <div style={{ fontSize: "0.72rem", color: "var(--bfc-base-c-3)", marginTop: 2 }}>
+                          S{risk.residual_probability} × K{risk.residual_consequence}
+                        </div>
+                      </div>
+                    ) : (
+                      <span style={{ color: "var(--bfc-base-c-3)" }}>–</span>
+                    )}
+                  </td>
                   <td style={{ padding: "0.5rem" }}>{statusLabel[risk.status]}</td>
                   <td style={{ padding: "0.5rem", display: "flex", gap: "0.25rem" }}>
                     <Button onClick={() => openEdit(risk)}>Rediger</Button>

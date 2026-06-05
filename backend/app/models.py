@@ -56,12 +56,22 @@ class RiskItem(Base):
     mitigation: Mapped[str | None] = mapped_column(Text)
     owner: Mapped[str | None] = mapped_column(String(200))
     status: Mapped[RiskStatus] = mapped_column(String(20), default=RiskStatus.open)
+    fagomrade: Mapped[str | None] = mapped_column(String(200))
+    risk_owner: Mapped[str | None] = mapped_column(String(200))
+    residual_probability: Mapped[int | None] = mapped_column(Integer)
+    residual_consequence: Mapped[int | None] = mapped_column(Integer)
 
     matrix: Mapped["RiskMatrix"] = relationship(back_populates="risks")
 
     @property
     def risk_score(self) -> int:
         return self.probability * self.consequence
+
+    @property
+    def residual_score(self) -> int | None:
+        if self.residual_probability and self.residual_consequence:
+            return self.residual_probability * self.residual_consequence
+        return None
 
 
 class CommunicationPlan(Base):

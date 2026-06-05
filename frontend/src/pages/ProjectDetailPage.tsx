@@ -187,7 +187,7 @@ export default function ProjectDetailPage() {
         if (simpleSelectedTemplate) {
           const d = JSON.parse(simpleSelectedTemplate.data) as { risks?: Array<{ description: string; probability: number; consequence: number; mitigation?: string | null; owner?: string | null; status?: string }> };
           for (const r of d.risks ?? []) {
-            await api.riskMatrices.addRisk(projectId, m.id, { description: r.description, probability: r.probability, consequence: r.consequence, mitigation: r.mitigation ?? null, owner: r.owner ?? null, status: (r.status ?? "open") as "open" | "mitigated" | "closed" });
+            await api.riskMatrices.addRisk(projectId, m.id, { description: r.description, probability: r.probability, consequence: r.consequence, mitigation: r.mitigation ?? null, owner: r.owner ?? null, status: (r.status ?? "open") as "open" | "mitigated" | "closed", fagomrade: null, risk_owner: null, residual_probability: null, residual_consequence: null });
           }
         }
         navigate(`/projects/${projectId}/risk-matrix/${m.id}`);

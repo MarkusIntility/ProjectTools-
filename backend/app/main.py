@@ -1,9 +1,32 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from sqlalchemy import inspect, text
 from .database import engine, Base
 from .routers import projects, risk_matrices, communication_plans, meeting_plans, runbooks, project_plans, oppgaver, templates
 
 Base.metadata.create_all(bind=engine)
+
+
+def _migrate_risk_items():
+    """Add new columns to risk_items if they don't exist (no Alembic — manual migration)."""
+    inspector = inspect(engine)
+    if "risk_items" not in inspector.get_table_names():
+        return
+    existing = {col["name"] for col in inspector.get_columns("risk_items")}
+    additions = [
+        ("fagomrade", "NVARCHAR(200)"),
+        ("risk_owner", "NVARCHAR(200)"),
+        ("residual_probability", "INT"),
+        ("residual_consequence", "INT"),
+    ]
+    with engine.connect() as conn:
+        for col, typ in additions:
+            if col not in existing:
+                conn.execute(text(f"ALTER TABLE risk_items ADD [{col}] {typ} NULL"))
+        conn.commit()
+
+
+_migrate_risk_items()
 
 app = FastAPI(title="ProjectTools API", version="1.0.0")
 

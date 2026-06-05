@@ -31,6 +31,11 @@ export interface RiskItem {
   mitigation: string | null;
   owner: string | null;
   status: "open" | "mitigated" | "closed";
+  fagomrade: string | null;
+  risk_owner: string | null;
+  residual_probability: number | null;
+  residual_consequence: number | null;
+  residual_score: number | null;
 }
 
 export interface RiskMatrix {
@@ -173,9 +178,9 @@ export const api = {
       request<RiskMatrix>(`/projects/${projectId}/risk-matrices/${matrixId}`, { method: "PUT", body: JSON.stringify(data) }),
     delete: (projectId: string, matrixId: string) =>
       request<void>(`/projects/${projectId}/risk-matrices/${matrixId}`, { method: "DELETE" }),
-    addRisk: (projectId: string, matrixId: string, data: Omit<RiskItem, "id" | "matrix_id" | "risk_score">) =>
+    addRisk: (projectId: string, matrixId: string, data: Omit<RiskItem, "id" | "matrix_id" | "risk_score" | "residual_score">) =>
       request<RiskItem>(`/projects/${projectId}/risk-matrices/${matrixId}/risks`, { method: "POST", body: JSON.stringify(data) }),
-    updateRisk: (projectId: string, matrixId: string, riskId: string, data: Omit<RiskItem, "id" | "matrix_id" | "risk_score">) =>
+    updateRisk: (projectId: string, matrixId: string, riskId: string, data: Omit<RiskItem, "id" | "matrix_id" | "risk_score" | "residual_score">) =>
       request<RiskItem>(`/projects/${projectId}/risk-matrices/${matrixId}/risks/${riskId}`, { method: "PUT", body: JSON.stringify(data) }),
     deleteRisk: (projectId: string, matrixId: string, riskId: string) =>
       request<void>(`/projects/${projectId}/risk-matrices/${matrixId}/risks/${riskId}`, { method: "DELETE" }),
