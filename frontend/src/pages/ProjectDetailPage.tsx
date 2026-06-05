@@ -1120,7 +1120,7 @@ function DashboardView({ riskMatrices, projectPlans, oppgaveLister, runbooks, me
       </div>
 
       {/* ── Middle: risk alerts + deadlines ────────────────────────────────── */}
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "1.25rem", alignItems: "start" }}>
+      <div style={{ display: "grid", gridTemplateColumns: "minmax(0, 1fr) minmax(0, 1fr)", gap: "1.25rem", alignItems: "start" }}>
 
         {/* Left: Top risks + mini heatmap */}
         <div style={{ display: "flex", flexDirection: "column", gap: "1rem" }}>
@@ -1198,11 +1198,12 @@ function DashboardView({ riskMatrices, projectPlans, oppgaveLister, runbooks, me
                 const cfg = TYPE_CONFIG[d.type];
                 return (
                   <div key={d.key} style={{
-                    display: "flex", alignItems: "center", gap: "0.6rem",
+                    display: "flex", alignItems: "center", gap: "0.5rem",
                     padding: "0.5rem 0.75rem", borderRadius: 7,
                     background: d.done ? "var(--bfc-base-2)" : "var(--bfc-base-3)",
                     border: "1px solid var(--bfc-base-dimmed)",
                     opacity: d.done ? 0.55 : 1,
+                    minWidth: 0, overflow: "hidden",
                   }}>
                     <span style={{
                       fontSize: "0.68rem", fontWeight: 600, padding: "1px 7px",
@@ -1221,18 +1222,18 @@ function DashboardView({ riskMatrices, projectPlans, oppgaveLister, runbooks, me
                       </span>
                     )}
                     <span style={{
-                      flex: 1, fontSize: "0.85rem",
+                      flex: 1, minWidth: 0, fontSize: "0.85rem",
                       overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
                       textDecoration: d.done ? "line-through" : "none",
                       color: d.done ? "var(--bfc-base-c-3)" : "inherit",
                     }}>
                       {d.title}
                     </span>
-                    <div style={{ flexShrink: 0, textAlign: "right" }}>
-                      <div style={{ fontSize: "0.78rem", fontWeight: 600, color: d.date.getTime() - now.getTime() < 86400000 ? "#E03131" : "var(--bfc-base-c-1)" }}>
+                    <div style={{ flexShrink: 0, textAlign: "right", minWidth: 56 }}>
+                      <div style={{ fontSize: "0.78rem", fontWeight: 600, whiteSpace: "nowrap", color: d.date.getTime() - now.getTime() < 86400000 ? "#E03131" : "var(--bfc-base-c-1)" }}>
                         {relativeDateLabel(d.date)}
                       </div>
-                      <div style={{ fontSize: "0.68rem", color: "var(--bfc-base-c-3)" }}>{d.context}</div>
+                      <div style={{ fontSize: "0.68rem", color: "var(--bfc-base-c-3)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", maxWidth: 100 }}>{d.context}</div>
                     </div>
                   </div>
                 );
