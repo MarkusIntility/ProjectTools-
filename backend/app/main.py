@@ -18,6 +18,7 @@ def _migrate_risk_items():
         ("risk_owner", "NVARCHAR(200)"),
         ("residual_probability", "INT"),
         ("residual_consequence", "INT"),
+        ("fase", "NVARCHAR(50)"),
     ]
     with engine.connect() as conn:
         for col, typ in additions:

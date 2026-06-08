@@ -9,6 +9,14 @@ const RISK_COLORS: Record<string, string> = {
   high: "#E03131",
 };
 
+const FASE_OPTIONS = ["Prosjekt", "Go-live", "Oppstart", "Drift"] as const;
+const FASE_COLORS: Record<string, string> = {
+  "Prosjekt": "#1971C2",
+  "Go-live": "#2F9E44",
+  "Oppstart": "#F76707",
+  "Drift": "#7950F2",
+};
+
 const CELL_BG: Record<string, string> = {
   low: "#D3F9D8",
   medium: "#FFE8CC",
@@ -46,6 +54,7 @@ interface RiskForm {
   risk_owner: string;
   residual_probability: number;
   residual_consequence: number;
+  fase: string;
 }
 
 const emptyRisk: RiskForm = {
@@ -59,6 +68,7 @@ const emptyRisk: RiskForm = {
   risk_owner: "",
   residual_probability: 1,
   residual_consequence: 1,
+  fase: "",
 };
 
 export default function RiskMatrixPage() {
@@ -78,6 +88,13 @@ export default function RiskMatrixPage() {
   const [existingTemplates, setExistingTemplates] = useState<Template[]>([]);
   const [selectedExistingId, setSelectedExistingId] = useState("");
   const [templateSaving, setTemplateSaving] = useState(false);
+
+  // ── Filter + sort state ───────────────────────────────────────────────────────
+  const [filterFase, setFilterFase] = useState<string>("");
+  const [filterFagomrade, setFilterFagomrade] = useState<string>("");
+  const [filterAnsvarlig, setFilterAnsvarlig] = useState<string>("");
+  type SortKey = "score_desc" | "score_asc" | "residual_desc" | "residual_asc";
+  const [sortKey, setSortKey] = useState<SortKey | null>(null);
 
   useEffect(() => {
     if (projectId && matrixId) {
@@ -99,6 +116,7 @@ export default function RiskMatrixPage() {
       risk_owner: risk.risk_owner ?? "",
       residual_probability: rp > 0 ? rp : 1,
       residual_consequence: rc > 0 ? rc : 1,
+      fase: risk.fase ?? "",
     });
     setResidualEnabled(rp > 0 || rc > 0);
     setEditingId(risk.id);
@@ -115,6 +133,7 @@ export default function RiskMatrixPage() {
         owner: form.owner || null,
         fagomrade: form.fagomrade || null,
         risk_owner: form.risk_owner || null,
+        fase: form.fase || null,
         residual_probability: residualEnabled ? form.residual_probability : null,
         residual_consequence: residualEnabled ? form.residual_consequence : null,
       };
@@ -165,6 +184,21 @@ export default function RiskMatrixPage() {
   }
 
   if (!matrix) return <div style={{ padding: "2rem" }}>Laster...</div>;
+
+  // ── Derived filter + sort ───────────────────────────────────────────────────
+  const uniqueFagomrader = [...new Set(matrix.risks.map((r) => r.fagomrade).filter(Boolean))] as string[];
+  const uniqueAnsvarlige = [...new Set(matrix.risks.map((r) => r.risk_owner).filter(Boolean))] as string[];
+
+  let displayRisks = [...matrix.risks];
+  if (filterFase) displayRisks = displayRisks.filter((r) => r.fase === filterFase);
+  if (filterFagomrade) displayRisks = displayRisks.filter((r) => r.fagomrade === filterFagomrade);
+  if (filterAnsvarlig) displayRisks = displayRisks.filter((r) => r.risk_owner === filterAnsvarlig);
+  if (sortKey === "score_desc") displayRisks.sort((a, b) => b.risk_score - a.risk_score);
+  else if (sortKey === "score_asc") displayRisks.sort((a, b) => a.risk_score - b.risk_score);
+  else if (sortKey === "residual_desc") displayRisks.sort((a, b) => (b.residual_score ?? 0) - (a.residual_score ?? 0));
+  else if (sortKey === "residual_asc") displayRisks.sort((a, b) => (a.residual_score ?? 0) - (b.residual_score ?? 0));
+
+  const hasActiveFilters = filterFase || filterFagomrade || filterAnsvarlig || sortKey;
 
   return (
     <div style={{ maxWidth: 1400, margin: "0 auto", padding: "2rem" }}>
@@ -223,9 +257,20 @@ export default function RiskMatrixPage() {
 
           <Input label="Beskrivelse" value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} />
 
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "1rem" }}>
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: "1rem" }}>
             <Input label="Fagområde" value={form.fagomrade} onChange={(e) => setForm({ ...form, fagomrade: e.target.value })} placeholder="f.eks. Workplace, Network" />
             <Input label="Risiko eier" value={form.risk_owner} onChange={(e) => setForm({ ...form, risk_owner: e.target.value })} placeholder="Navn eller rolle" />
+            <div>
+              <label className="bf-label">Fase</label>
+              <select
+                value={form.fase}
+                onChange={(e) => setForm({ ...form, fase: e.target.value })}
+                style={{ width: "100%", padding: "0.5rem", borderRadius: 4, border: "1px solid var(--bfc-base-dimmed)", marginTop: 4 }}
+              >
+                <option value="">– Ingen –</option>
+                {FASE_OPTIONS.map((f) => <option key={f} value={f}>{f}</option>)}
+              </select>
+            </div>
           </div>
 
           <div style={{ borderTop: "1px solid var(--bfc-base-dimmed)", paddingTop: "0.75rem" }}>
@@ -342,71 +387,197 @@ export default function RiskMatrixPage() {
         </div>
       )}
 
+      {/* Filter + sort toolbar (table only) */}
+      {matrix.risks.length > 0 && activeTab === "table" && (
+        <div style={{
+          display: "flex", flexWrap: "wrap", gap: "0.75rem", alignItems: "center",
+          padding: "0.75rem 1rem", borderRadius: 8,
+          background: "var(--bfc-base-3)", border: "1px solid var(--bfc-base-dimmed)",
+          marginBottom: "1rem",
+        }}>
+          {/* Fase filter */}
+          <div style={{ display: "flex", alignItems: "center", gap: "0.35rem", flexWrap: "wrap" }}>
+            <span style={{ fontSize: "0.78rem", fontWeight: 600, color: "var(--bfc-base-c-2)", whiteSpace: "nowrap" }}>Fase:</span>
+            {FASE_OPTIONS.map((f) => (
+              <button
+                key={f}
+                onClick={() => setFilterFase(filterFase === f ? "" : f)}
+                style={{
+                  padding: "2px 10px", borderRadius: 20, fontSize: "0.78rem", fontWeight: 600,
+                  border: `1px solid ${filterFase === f ? FASE_COLORS[f] : "var(--bfc-base-dimmed)"}`,
+                  background: filterFase === f ? `${FASE_COLORS[f]}18` : "var(--bfc-base-2)",
+                  color: filterFase === f ? FASE_COLORS[f] : "var(--bfc-base-c-2)",
+                  cursor: "pointer", transition: "all 0.12s",
+                }}
+              >
+                {f}
+              </button>
+            ))}
+          </div>
+
+          <div style={{ width: 1, height: 20, background: "var(--bfc-base-dimmed)", flexShrink: 0 }} />
+
+          {/* Fagområde filter */}
+          <div style={{ display: "flex", alignItems: "center", gap: "0.35rem" }}>
+            <span style={{ fontSize: "0.78rem", fontWeight: 600, color: "var(--bfc-base-c-2)", whiteSpace: "nowrap" }}>Fagområde:</span>
+            <select
+              value={filterFagomrade}
+              onChange={(e) => setFilterFagomrade(e.target.value)}
+              style={{ padding: "3px 8px", borderRadius: 6, border: "1px solid var(--bfc-base-dimmed)", fontSize: "0.82rem", background: "var(--bfc-base-2)", color: "var(--bfc-base-c-1)", cursor: "pointer" }}
+            >
+              <option value="">Alle</option>
+              {uniqueFagomrader.map((f) => <option key={f} value={f}>{f}</option>)}
+            </select>
+          </div>
+
+          {/* Ansvarlig filter */}
+          <div style={{ display: "flex", alignItems: "center", gap: "0.35rem" }}>
+            <span style={{ fontSize: "0.78rem", fontWeight: 600, color: "var(--bfc-base-c-2)", whiteSpace: "nowrap" }}>Risiko eier:</span>
+            <select
+              value={filterAnsvarlig}
+              onChange={(e) => setFilterAnsvarlig(e.target.value)}
+              style={{ padding: "3px 8px", borderRadius: 6, border: "1px solid var(--bfc-base-dimmed)", fontSize: "0.82rem", background: "var(--bfc-base-2)", color: "var(--bfc-base-c-1)", cursor: "pointer" }}
+            >
+              <option value="">Alle</option>
+              {uniqueAnsvarlige.map((a) => <option key={a} value={a}>{a}</option>)}
+            </select>
+          </div>
+
+          <div style={{ width: 1, height: 20, background: "var(--bfc-base-dimmed)", flexShrink: 0 }} />
+
+          {/* Sort */}
+          <div style={{ display: "flex", alignItems: "center", gap: "0.35rem" }}>
+            <span style={{ fontSize: "0.78rem", fontWeight: 600, color: "var(--bfc-base-c-2)", whiteSpace: "nowrap" }}>Sorter:</span>
+            {([
+              { key: "score_desc", label: "Score ↓" },
+              { key: "score_asc",  label: "Score ↑" },
+              { key: "residual_desc", label: "Restrisiko ↓" },
+              { key: "residual_asc",  label: "Restrisiko ↑" },
+            ] as { key: SortKey; label: string }[]).map(({ key, label }) => (
+              <button
+                key={key}
+                onClick={() => setSortKey(sortKey === key ? null : key)}
+                style={{
+                  padding: "2px 10px", borderRadius: 20, fontSize: "0.78rem", fontWeight: 600,
+                  border: `1px solid ${sortKey === key ? "#E03131" : "var(--bfc-base-dimmed)"}`,
+                  background: sortKey === key ? "#E0313118" : "var(--bfc-base-2)",
+                  color: sortKey === key ? "#E03131" : "var(--bfc-base-c-2)",
+                  cursor: "pointer", transition: "all 0.12s",
+                }}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
+
+          {/* Reset */}
+          {hasActiveFilters && (
+            <button
+              onClick={() => { setFilterFase(""); setFilterFagomrade(""); setFilterAnsvarlig(""); setSortKey(null); }}
+              style={{ padding: "2px 10px", borderRadius: 20, fontSize: "0.78rem", fontWeight: 600, border: "1px solid var(--bfc-base-dimmed)", background: "none", color: "var(--bfc-base-c-3)", cursor: "pointer", marginLeft: "auto" }}
+            >
+              × Tilbakestill
+            </button>
+          )}
+        </div>
+      )}
+
       {matrix.risks.length === 0 ? (
         <p style={{ color: "var(--bfc-base-c-2)" }}>Ingen risikoer lagt til ennå.</p>
       ) : activeTab === "table" ? (
-        <table style={{ width: "100%", borderCollapse: "collapse" }}>
-          <thead>
-            <tr style={{ textAlign: "left", borderBottom: "2px solid var(--bfc-base-dimmed)", fontSize: "0.85rem" }}>
-              <th style={{ padding: "0.5rem" }}>Beskrivelse</th>
-              <th style={{ padding: "0.5rem" }}>Fagområde</th>
-              <th style={{ padding: "0.5rem" }}>Risiko eier</th>
-              <th style={{ padding: "0.5rem" }}>S</th>
-              <th style={{ padding: "0.5rem" }}>K</th>
-              <th style={{ padding: "0.5rem" }}>Score</th>
-              <th style={{ padding: "0.5rem" }}>Tiltak</th>
-              <th style={{ padding: "0.5rem" }}>Ansvarlig</th>
-              <th style={{ padding: "0.5rem" }}>Restrisiko</th>
-              <th style={{ padding: "0.5rem" }}>Status</th>
-              <th style={{ padding: "0.5rem" }}></th>
-            </tr>
-          </thead>
-          <tbody>
-            {matrix.risks.map((risk) => {
-              const level = riskLevel(risk.risk_score);
-              const residualLevel = risk.residual_score ? riskLevel(risk.residual_score) : null;
-              return (
-                <tr key={risk.id} style={{ borderBottom: "1px solid var(--bfc-base-dimmed)" }}>
-                  <td style={{ padding: "0.5rem" }}>{risk.description}</td>
-                  <td style={{ padding: "0.5rem", color: risk.fagomrade ? "inherit" : "var(--bfc-base-c-3)" }}>
-                    {risk.fagomrade ?? "–"}
-                  </td>
-                  <td style={{ padding: "0.5rem", color: risk.risk_owner ? "inherit" : "var(--bfc-base-c-3)" }}>
-                    {risk.risk_owner ?? "–"}
-                  </td>
-                  <td style={{ padding: "0.5rem" }}>{risk.probability}</td>
-                  <td style={{ padding: "0.5rem" }}>{risk.consequence}</td>
-                  <td style={{ padding: "0.5rem" }}>
-                    <span style={{ background: RISK_COLORS[level], color: "#fff", borderRadius: 4, padding: "2px 8px", fontWeight: 600 }}>
-                      {risk.risk_score}
-                    </span>
-                  </td>
-                  <td style={{ padding: "0.5rem" }}>{risk.mitigation ?? "–"}</td>
-                  <td style={{ padding: "0.5rem" }}>{risk.owner ?? "–"}</td>
-                  <td style={{ padding: "0.5rem" }}>
-                    {residualLevel && risk.residual_score ? (
-                      <div>
-                        <span style={{ background: RISK_COLORS[residualLevel], color: "#fff", borderRadius: 4, padding: "2px 8px", fontWeight: 600 }}>
-                          {risk.residual_score}
-                        </span>
-                        <div style={{ fontSize: "0.72rem", color: "var(--bfc-base-c-3)", marginTop: 2 }}>
-                          S{risk.residual_probability} × K{risk.residual_consequence}
-                        </div>
-                      </div>
-                    ) : (
-                      <span style={{ color: "var(--bfc-base-c-3)" }}>–</span>
-                    )}
-                  </td>
-                  <td style={{ padding: "0.5rem" }}>{statusLabel[risk.status]}</td>
-                  <td style={{ padding: "0.5rem", display: "flex", gap: "0.25rem" }}>
-                    <Button onClick={() => openEdit(risk)}>Rediger</Button>
-                    <Button state="alert" onClick={() => handleDelete(risk.id)}>Slett</Button>
-                  </td>
+        <>
+          {displayRisks.length === 0 && (
+            <p style={{ color: "var(--bfc-base-c-2)", padding: "1rem 0" }}>Ingen risikoer matcher filteret.</p>
+          )}
+          {displayRisks.length > 0 && (
+            <table style={{ width: "100%", borderCollapse: "collapse" }}>
+              <thead>
+                <tr style={{ textAlign: "left", borderBottom: "2px solid var(--bfc-base-dimmed)", fontSize: "0.85rem" }}>
+                  <th style={{ padding: "0.5rem" }}>Beskrivelse</th>
+                  <th style={{ padding: "0.5rem" }}>Fase</th>
+                  <th style={{ padding: "0.5rem" }}>Fagområde</th>
+                  <th style={{ padding: "0.5rem" }}>Risiko eier</th>
+                  <th style={{ padding: "0.5rem" }}>S</th>
+                  <th style={{ padding: "0.5rem" }}>K</th>
+                  <th style={{ padding: "0.5rem", cursor: "pointer", userSelect: "none", whiteSpace: "nowrap" }}
+                    onClick={() => setSortKey(sortKey === "score_desc" ? "score_asc" : "score_desc")}
+                  >
+                    Score {sortKey === "score_desc" ? "↓" : sortKey === "score_asc" ? "↑" : "↕"}
+                  </th>
+                  <th style={{ padding: "0.5rem" }}>Tiltak</th>
+                  <th style={{ padding: "0.5rem" }}>Ansvarlig</th>
+                  <th style={{ padding: "0.5rem", cursor: "pointer", userSelect: "none", whiteSpace: "nowrap" }}
+                    onClick={() => setSortKey(sortKey === "residual_desc" ? "residual_asc" : "residual_desc")}
+                  >
+                    Restrisiko {sortKey === "residual_desc" ? "↓" : sortKey === "residual_asc" ? "↑" : "↕"}
+                  </th>
+                  <th style={{ padding: "0.5rem" }}>Status</th>
+                  <th style={{ padding: "0.5rem" }}></th>
                 </tr>
-              );
-            })}
-          </tbody>
-        </table>
+              </thead>
+              <tbody>
+                {displayRisks.map((risk) => {
+                  const level = riskLevel(risk.risk_score);
+                  const residualLevel = risk.residual_score ? riskLevel(risk.residual_score) : null;
+                  return (
+                    <tr key={risk.id} style={{ borderBottom: "1px solid var(--bfc-base-dimmed)" }}>
+                      <td style={{ padding: "0.5rem" }}>{risk.description}</td>
+                      <td style={{ padding: "0.5rem" }}>
+                        {risk.fase ? (
+                          <span style={{
+                            fontSize: "0.75rem", fontWeight: 600, padding: "2px 9px", borderRadius: 20,
+                            background: `${FASE_COLORS[risk.fase] ?? "#868E96"}18`,
+                            color: FASE_COLORS[risk.fase] ?? "#868E96",
+                            border: `1px solid ${FASE_COLORS[risk.fase] ?? "#868E96"}30`,
+                            whiteSpace: "nowrap",
+                          }}>
+                            {risk.fase}
+                          </span>
+                        ) : (
+                          <span style={{ color: "var(--bfc-base-c-3)" }}>–</span>
+                        )}
+                      </td>
+                      <td style={{ padding: "0.5rem", color: risk.fagomrade ? "inherit" : "var(--bfc-base-c-3)" }}>
+                        {risk.fagomrade ?? "–"}
+                      </td>
+                      <td style={{ padding: "0.5rem", color: risk.risk_owner ? "inherit" : "var(--bfc-base-c-3)" }}>
+                        {risk.risk_owner ?? "–"}
+                      </td>
+                      <td style={{ padding: "0.5rem" }}>{risk.probability}</td>
+                      <td style={{ padding: "0.5rem" }}>{risk.consequence}</td>
+                      <td style={{ padding: "0.5rem" }}>
+                        <span style={{ background: RISK_COLORS[level], color: "#fff", borderRadius: 4, padding: "2px 8px", fontWeight: 600 }}>
+                          {risk.risk_score}
+                        </span>
+                      </td>
+                      <td style={{ padding: "0.5rem" }}>{risk.mitigation ?? "–"}</td>
+                      <td style={{ padding: "0.5rem" }}>{risk.owner ?? "–"}</td>
+                      <td style={{ padding: "0.5rem" }}>
+                        {residualLevel && risk.residual_score ? (
+                          <div>
+                            <span style={{ background: RISK_COLORS[residualLevel], color: "#fff", borderRadius: 4, padding: "2px 8px", fontWeight: 600 }}>
+                              {risk.residual_score}
+                            </span>
+                            <div style={{ fontSize: "0.72rem", color: "var(--bfc-base-c-3)", marginTop: 2 }}>
+                              S{risk.residual_probability} × K{risk.residual_consequence}
+                            </div>
+                          </div>
+                        ) : (
+                          <span style={{ color: "var(--bfc-base-c-3)" }}>–</span>
+                        )}
+                      </td>
+                      <td style={{ padding: "0.5rem" }}>{statusLabel[risk.status]}</td>
+                      <td style={{ padding: "0.5rem", display: "flex", gap: "0.25rem" }}>
+                        <Button onClick={() => openEdit(risk)}>Rediger</Button>
+                        <Button state="alert" onClick={() => handleDelete(risk.id)}>Slett</Button>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          )}
+        </>
       ) : (
         <Heatmap risks={matrix.risks} onEdit={openEdit} />
       )}

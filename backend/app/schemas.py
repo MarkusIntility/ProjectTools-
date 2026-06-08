@@ -33,6 +33,7 @@ class RiskItemBase(BaseModel):
     risk_owner: str | None = None
     residual_probability: int | None = None
     residual_consequence: int | None = None
+    fase: str | None = None
 
 
 class RiskItemCreate(RiskItemBase):

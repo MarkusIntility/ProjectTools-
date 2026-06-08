@@ -60,6 +60,7 @@ class RiskItem(Base):
     risk_owner: Mapped[str | None] = mapped_column(String(200))
     residual_probability: Mapped[int | None] = mapped_column(Integer)
     residual_consequence: Mapped[int | None] = mapped_column(Integer)
+    fase: Mapped[str | None] = mapped_column(String(50))
 
     matrix: Mapped["RiskMatrix"] = relationship(back_populates="risks")
 

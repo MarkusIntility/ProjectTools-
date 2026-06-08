@@ -36,6 +36,7 @@ export interface RiskItem {
   residual_probability: number | null;
   residual_consequence: number | null;
   residual_score: number | null;
+  fase?: string | null;
 }
 
 export interface RiskMatrix {
