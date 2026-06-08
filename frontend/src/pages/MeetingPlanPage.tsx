@@ -17,9 +17,10 @@ function formatDate(iso: string): string {
 function relativeBadge(iso: string): { label: string; color: string } | null {
   const d = new Date(iso);
   const now = new Date();
-  const diff = d.getTime() - now.getTime();
-  if (diff < 0) return null;
-  const days = Math.floor(diff / 86400000);
+  if (d < now) return null;
+  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  const meetingDay = new Date(d.getFullYear(), d.getMonth(), d.getDate());
+  const days = Math.round((meetingDay.getTime() - today.getTime()) / 86400000);
   if (days === 0) return { label: "I dag", color: "#E03131" };
   if (days === 1) return { label: "I morgen", color: "#F76707" };
   if (days <= 7) return { label: `Om ${days} dager`, color: "#F59F00" };
