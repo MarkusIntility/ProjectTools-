@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { Button, Input, Modal } from "@intility/bifrost-react";
 import { api, type RiskMatrix, type RiskItem, type Template } from "../api/client";
@@ -96,11 +96,34 @@ export default function RiskMatrixPage() {
   type SortKey = "score_desc" | "score_asc" | "residual_desc" | "residual_asc";
   const [sortKey, setSortKey] = useState<SortKey | null>(null);
 
+  // ── Scroll refs ───────────────────────────────────────────────────────────────
+  const formRef = useRef<HTMLDivElement>(null);
+  const [scrollBackToId, setScrollBackToId] = useState<string | null>(null);
+
   useEffect(() => {
     if (projectId && matrixId) {
       api.riskMatrices.get(projectId, matrixId).then(setMatrix);
     }
   }, [projectId, matrixId]);
+
+  // Scroll to form when it opens
+  useEffect(() => {
+    if (showForm) {
+      requestAnimationFrame(() => {
+        formRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+      });
+    }
+  }, [showForm]);
+
+  // Scroll back to the edited/created row after form closes
+  useEffect(() => {
+    if (!showForm && scrollBackToId) {
+      requestAnimationFrame(() => {
+        document.getElementById(`risk-row-${scrollBackToId}`)?.scrollIntoView({ behavior: "smooth", block: "center" });
+      });
+      setScrollBackToId(null);
+    }
+  }, [showForm, scrollBackToId]);
 
   function openEdit(risk: RiskItem) {
     const rp = risk.residual_probability ?? 0;
@@ -121,6 +144,7 @@ export default function RiskMatrixPage() {
     setResidualEnabled(rp > 0 || rc > 0);
     setEditingId(risk.id);
     setShowForm(true);
+    // scroll handled by useEffect watching showForm
   }
 
   async function handleSave() {
@@ -137,16 +161,20 @@ export default function RiskMatrixPage() {
         residual_probability: residualEnabled ? form.residual_probability : null,
         residual_consequence: residualEnabled ? form.residual_consequence : null,
       };
+      let returnId: string | null = null;
       if (editingId) {
         const updated = await api.riskMatrices.updateRisk(projectId, matrixId, editingId, data);
         setMatrix((prev) => prev ? { ...prev, risks: prev.risks.map((r) => r.id === editingId ? updated : r) } : prev);
+        returnId = editingId;
       } else {
         const created = await api.riskMatrices.addRisk(projectId, matrixId, data);
         setMatrix((prev) => prev ? { ...prev, risks: [...prev.risks, created] } : prev);
+        returnId = created.id;
       }
       setShowForm(false);
       setForm(emptyRisk);
       setEditingId(null);
+      setScrollBackToId(returnId);
     } finally {
       setSaving(false);
     }
@@ -252,7 +280,7 @@ export default function RiskMatrixPage() {
       </Modal>
 
       {showForm && (
-        <div style={{ background: "var(--bfc-base-3)", borderRadius: 8, padding: "1.5rem", marginBottom: "1.5rem", display: "grid", gap: "1rem" }}>
+        <div ref={formRef} style={{ background: "var(--bfc-base-3)", borderRadius: 8, padding: "1.5rem", marginBottom: "1.5rem", display: "grid", gap: "1rem" }}>
           <h3 className="bf-h4">{editingId ? "Rediger risiko" : "Ny risiko"}</h3>
 
           <Input label="Beskrivelse" value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} />
@@ -520,7 +548,7 @@ export default function RiskMatrixPage() {
                   const level = riskLevel(risk.risk_score);
                   const residualLevel = risk.residual_score ? riskLevel(risk.residual_score) : null;
                   return (
-                    <tr key={risk.id} style={{ borderBottom: "1px solid var(--bfc-base-dimmed)" }}>
+                    <tr key={risk.id} id={`risk-row-${risk.id}`} style={{ borderBottom: "1px solid var(--bfc-base-dimmed)" }}>
                       <td style={{ padding: "0.5rem" }}>{risk.description}</td>
                       <td style={{ padding: "0.5rem" }}>
                         {risk.fase ? (
