@@ -24,35 +24,58 @@ async function acquireCalendarToken(
   }
 }
 
+/**
+ * Fetches all Outlook calendar instances (including recurring occurrences) with the
+ * given category from now until `monthsAhead` months in the future.
+ *
+ * Uses /me/calendarView instead of /me/events so that each occurrence of a
+ * recurring series is returned as a separate item.
+ */
 export async function fetchOutlookMeetingsByCategory(
   msal: IPublicClientApplication,
   account: AccountInfo,
-  categoryName: string
+  categoryName: string,
+  monthsAhead = 12
 ): Promise<OutlookEvent[]> {
   const token = await acquireCalendarToken(msal, account);
 
-  const nowIso = new Date().toISOString();
+  const now = new Date();
+  const future = new Date(now);
+  future.setMonth(future.getMonth() + monthsAhead);
+
   const safeCat = categoryName.replace(/'/g, "''");
-  const filter = `categories/any(c:c eq '${safeCat}') and start/dateTime ge '${nowIso}'`;
+
   const params = new URLSearchParams({
-    $filter: filter,
+    startDateTime: now.toISOString(),
+    endDateTime: future.toISOString(),
+    $filter: `categories/any(c:c eq '${safeCat}')`,
     $select: "id,subject,start,end,bodyPreview,categories",
     $orderby: "start/dateTime asc",
-    $top: "200",
+    $top: "500",
   });
 
-  const res = await fetch(`https://graph.microsoft.com/v1.0/me/events?${params}`, {
-    headers: {
-      Authorization: `Bearer ${token}`,
-      Prefer: 'outlook.timezone="UTC"',
-    },
-  });
+  let url: string | null =
+    `https://graph.microsoft.com/v1.0/me/calendarView?${params}`;
+  const allEvents: OutlookEvent[] = [];
 
-  if (!res.ok) {
-    const err = await res.text();
-    throw new Error(`Kalender-feil (${res.status}): ${err}`);
+  while (url) {
+    const res = await fetch(url, {
+      headers: {
+        Authorization: `Bearer ${token}`,
+        Prefer: 'outlook.timezone="UTC"',
+      },
+    });
+
+    if (!res.ok) {
+      const err = await res.text();
+      throw new Error(`Kalender-feil (${res.status}): ${err}`);
+    }
+
+    const data: { value: OutlookEvent[]; "@odata.nextLink"?: string } =
+      await res.json();
+    allEvents.push(...(data.value ?? []));
+    url = data["@odata.nextLink"] ?? null;
   }
 
-  const data: { value: OutlookEvent[] } = await res.json();
-  return data.value ?? [];
+  return allEvents;
 }
