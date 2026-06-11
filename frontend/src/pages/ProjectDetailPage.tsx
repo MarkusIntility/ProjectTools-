@@ -1143,10 +1143,7 @@ function DashboardView({ riskMatrices, projectPlans, oppgaveLister, runbooks, me
           label="Ferdige oppgaver"
           sub={oppgaverSub}
           color="#1971C2"
-          onClick={hasPlannerOppgaver && !msalAuthenticated ? async () => {
-            sessionStorage.setItem("app.returnUrl", window.location.href);
-            await msalInstance.loginRedirect({ scopes: ["Tasks.Read"] });
-          } : undefined}
+          onClick={oppgaveLister[0] ? () => navigate(`/projects/${projectId}/oppgave/${oppgaveLister[0].id}`) : undefined}
         />
         <KpiCard
           value={nextMeeting
@@ -1161,10 +1158,7 @@ function DashboardView({ riskMatrices, projectPlans, oppgaveLister, runbooks, me
           label="Leveranser"
           sub={leveranserSub}
           color="#1098AD"
-          onClick={hasPlannerPlans && !msalAuthenticated ? async () => {
-            sessionStorage.setItem("app.returnUrl", window.location.href);
-            await msalInstance.loginRedirect({ scopes: ["Tasks.Read"] });
-          } : undefined}
+          onClick={projectPlans[0] ? () => navigate(`/projects/${projectId}/project-plan/${projectPlans[0].id}`) : undefined}
         />
       </div>
 
