@@ -1110,6 +1110,22 @@ function DashboardView({ riskMatrices, projectPlans, oppgaveLister, runbooks, me
 
   const firstMatrix = riskMatrices[0];
 
+  const hasPlannerOppgaver = isMsalConfigured && oppgaveLister.some((ol) => ol.source === "planner");
+  const hasPlannerPlans   = isMsalConfigured && projectPlans.some((p) => p.source === "planner");
+  const msalAuthenticated = isMsalConfigured && msalInstance.getAllAccounts().length > 0;
+
+  const oppgaverSub =
+    plannerLoading && hasPlannerOppgaver ? "Laster Planner..." :
+    hasPlannerOppgaver && !msalAuthenticated ? "Logg inn for Planner-data" :
+    totalOppgaver > 0 ? `${doneOppgaver} av ${totalOppgaver} oppgaver` :
+    "Ingen oppgaver registrert";
+
+  const leveranserSub =
+    plannerLoading && hasPlannerPlans ? "Laster Planner..." :
+    hasPlannerPlans && !msalAuthenticated ? "Logg inn for Planner-data" :
+    planTasksTotal > 0 ? `${planTasksDone} av ${planTasksTotal} oppgaver ferdig` :
+    "Ingen prosjektplaner";
+
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: "2rem" }}>
 
@@ -1123,10 +1139,14 @@ function DashboardView({ riskMatrices, projectPlans, oppgaveLister, runbooks, me
           onClick={firstMatrix ? () => navigate(`/projects/${projectId}/risk-matrix/${firstMatrix.id}`) : undefined}
         />
         <KpiCard
-          value={doneOppgaver}
+          value={plannerLoading && hasPlannerOppgaver ? "…" : doneOppgaver}
           label="Ferdige oppgaver"
-          sub={totalOppgaver > 0 ? `${doneOppgaver} av ${totalOppgaver} oppgaver` : "Ingen oppgaver registrert"}
+          sub={oppgaverSub}
           color="#1971C2"
+          onClick={hasPlannerOppgaver && !msalAuthenticated ? async () => {
+            sessionStorage.setItem("app.returnUrl", window.location.href);
+            await msalInstance.loginRedirect({ scopes: ["Tasks.Read"] });
+          } : undefined}
         />
         <KpiCard
           value={nextMeeting
@@ -1137,10 +1157,14 @@ function DashboardView({ riskMatrices, projectPlans, oppgaveLister, runbooks, me
           color="#7950F2"
         />
         <KpiCard
-          value={leveranserPct !== null ? `${leveranserPct}%` : "–"}
+          value={plannerLoading && hasPlannerPlans ? "…" : (leveranserPct !== null ? `${leveranserPct}%` : "–")}
           label="Leveranser"
-          sub={planTasksTotal > 0 ? `${planTasksDone} av ${planTasksTotal} oppgaver ferdig` : "Ingen prosjektplaner"}
+          sub={leveranserSub}
           color="#1098AD"
+          onClick={hasPlannerPlans && !msalAuthenticated ? async () => {
+            sessionStorage.setItem("app.returnUrl", window.location.href);
+            await msalInstance.loginRedirect({ scopes: ["Tasks.Read"] });
+          } : undefined}
         />
       </div>
 
