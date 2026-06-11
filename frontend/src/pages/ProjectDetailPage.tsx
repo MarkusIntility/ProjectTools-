@@ -994,20 +994,20 @@ function DashboardView({ riskMatrices, projectPlans, oppgaveLister, runbooks, me
   const ownOppgaver = oppgaveLister.filter((ol) => ol.source === "own").flatMap((ol) => ol.oppgaver);
   const ownActivities = runbooks.filter((rb) => rb.source === "own").flatMap((rb) => rb.activities);
 
-  const totalItems = ownTasks.length + ownOppgaver.length + ownActivities.length;
-  const doneItems =
-    ownTasks.filter((t) => t.percent_complete === 100).length +
-    ownOppgaver.filter((o) => o.status === "done").length +
-    ownActivities.filter((a) => a.status === "done").length;
-  const progressPct = totalItems > 0 ? Math.round((doneItems / totalItems) * 100) : null;
+  // "Ferdig"-kortet: ferdige oppgaver fra oppgave_lister (own)
+  const doneOppgaver = ownOppgaver.filter((o) => o.status === "done").length;
+  const totalOppgaver = ownOppgaver.length;
+
+  // "Leveranser"-kortet: % ferdig fra prosjektplaner (own)
+  const planTasksDone = ownTasks.filter((t) => t.percent_complete === 100).length;
+  const planTasksTotal = ownTasks.length;
+  const leveranserPct = planTasksTotal > 0 ? Math.round((planTasksDone / planTasksTotal) * 100) : null;
 
   const now = new Date();
   const allMeetings = meetingPlans.flatMap((mp) => mp.meetings);
   const nextMeeting = allMeetings
     .filter((m) => new Date(m.date) > now)
     .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime())[0] ?? null;
-
-  const activeActs = ownActivities.filter((a) => a.status === "in_progress");
 
   // ── Upcoming deadlines (14 days) ────────────────────────────────────────────
   const twoWeeks = new Date(now.getTime() + 14 * 86400000);
@@ -1099,9 +1099,9 @@ function DashboardView({ riskMatrices, projectPlans, oppgaveLister, runbooks, me
           onClick={firstMatrix ? () => navigate(`/projects/${projectId}/risk-matrix/${firstMatrix.id}`) : undefined}
         />
         <KpiCard
-          value={progressPct !== null ? `${progressPct}%` : "–"}
-          label="Ferdig"
-          sub={totalItems > 0 ? `${doneItems} av ${totalItems} elementer` : "Ingen egne oppgaver"}
+          value={doneOppgaver}
+          label="Ferdige oppgaver"
+          sub={totalOppgaver > 0 ? `${doneOppgaver} av ${totalOppgaver} oppgaver` : "Ingen oppgaver registrert"}
           color="#1971C2"
         />
         <KpiCard
@@ -1113,9 +1113,9 @@ function DashboardView({ riskMatrices, projectPlans, oppgaveLister, runbooks, me
           color="#7950F2"
         />
         <KpiCard
-          value={activeActs.length}
-          label="Aktive aktiviteter"
-          sub={activeActs.length > 0 ? activeActs.slice(0, 1).map((a) => a.name).join(", ") : "Ingen pågående"}
+          value={leveranserPct !== null ? `${leveranserPct}%` : "–"}
+          label="Leveranser"
+          sub={planTasksTotal > 0 ? `${planTasksDone} av ${planTasksTotal} oppgaver ferdig` : "Ingen prosjektplaner"}
           color="#1098AD"
         />
       </div>
