@@ -992,7 +992,6 @@ function DashboardView({ riskMatrices, projectPlans, oppgaveLister, runbooks, me
 
   const ownTasks = projectPlans.filter((p) => p.source === "own").flatMap((p) => p.tasks);
   const ownOppgaver = oppgaveLister.filter((ol) => ol.source === "own").flatMap((ol) => ol.oppgaver);
-  const ownActivities = runbooks.filter((rb) => rb.source === "own").flatMap((rb) => rb.activities);
 
   // "Ferdig"-kortet: ferdige oppgaver fra oppgave_lister (own)
   const doneOppgaver = ownOppgaver.filter((o) => o.status === "done").length;
