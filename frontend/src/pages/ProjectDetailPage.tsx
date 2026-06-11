@@ -925,10 +925,12 @@ function DashboardView({ riskMatrices, projectPlans, oppgaveLister, runbooks, me
   projectId: string;
   navigate: (path: string) => void;
 }) {
-  // ── Planner deadlines (silent fetch) ─────────────────────────────────────────
+  // ── Planner deadlines + stats (silent fetch) ────────────────────────────────
   const [plannerDeadlines, setPlannerDeadlines] = useState<DeadlineItem[]>([]);
   const [plannerLoading, setPlannerLoading] = useState(false);
   const [komendeExpanded, setKomendeExpanded] = useState(false);
+  // Maps our DB id → { done, total } for Planner-backed plans
+  const [plannerStats, setPlannerStats] = useState<Map<string, { done: number; total: number }>>(new Map());
 
   const fetchPlannerDeadlines = useCallback(async () => {
     if (!isMsalConfigured) return;
@@ -936,16 +938,16 @@ function DashboardView({ riskMatrices, projectPlans, oppgaveLister, runbooks, me
     if (accounts.length === 0) return;
     const account = accounts[0];
 
-    const resources: Array<{ url: string; context: string; type: DeadlineItem["type"] }> = [
+    const resources: Array<{ id: string; url: string; context: string; type: DeadlineItem["type"] }> = [
       ...projectPlans
         .filter((p) => p.source === "planner" && p.external_url)
-        .map((p) => ({ url: p.external_url!, context: p.title, type: "task" as const })),
+        .map((p) => ({ id: p.id, url: p.external_url!, context: p.title, type: "task" as const })),
       ...oppgaveLister
         .filter((ol) => ol.source === "planner" && ol.external_url)
-        .map((ol) => ({ url: ol.external_url!, context: ol.title, type: "oppgave" as const })),
+        .map((ol) => ({ id: ol.id, url: ol.external_url!, context: ol.title, type: "oppgave" as const })),
       ...runbooks
         .filter((rb) => rb.source === "planner" && rb.external_url)
-        .map((rb) => ({ url: rb.external_url!, context: rb.title, type: "activity" as const })),
+        .map((rb) => ({ id: rb.id, url: rb.external_url!, context: rb.title, type: "activity" as const })),
     ];
 
     if (resources.length === 0) return;
@@ -955,9 +957,13 @@ function DashboardView({ riskMatrices, projectPlans, oppgaveLister, runbooks, me
     const fetchTwoWeeks = new Date(fetchNow.getTime() + 14 * 86400000);
 
     const results = await Promise.allSettled(
-      resources.map(async ({ url, context, type }) => {
+      resources.map(async ({ id, url, context, type }) => {
         const data = await fetchPlannerData(msalInstance, account, url);
-        return data.tasks
+        const stats = {
+          done: data.tasks.filter((t) => t.percentComplete === 100).length,
+          total: data.tasks.length,
+        };
+        const deadlines = data.tasks
           .filter((t) => t.dueDateTime)
           .map((t) => ({
             key: `planner-${t.id}`,
@@ -969,14 +975,21 @@ function DashboardView({ riskMatrices, projectPlans, oppgaveLister, runbooks, me
             source: "planner" as const,
           }))
           .filter((d) => d.date >= fetchNow && d.date <= fetchTwoWeeks);
+        return { id, deadlines, stats };
       })
     );
 
-    const items: DeadlineItem[] = results
-      .flatMap((r) => (r.status === "fulfilled" ? r.value : []))
-      .sort((a, b) => a.date.getTime() - b.date.getTime());
+    const items: DeadlineItem[] = [];
+    const newStats = new Map<string, { done: number; total: number }>();
+    for (const r of results) {
+      if (r.status === "fulfilled") {
+        items.push(...r.value.deadlines);
+        newStats.set(r.value.id, r.value.stats);
+      }
+    }
 
-    setPlannerDeadlines(items);
+    setPlannerDeadlines(items.sort((a, b) => a.date.getTime() - b.date.getTime()));
+    setPlannerStats(newStats);
     setPlannerLoading(false);
   }, [projectPlans, oppgaveLister, runbooks]);
 
@@ -993,13 +1006,25 @@ function DashboardView({ riskMatrices, projectPlans, oppgaveLister, runbooks, me
   const ownTasks = projectPlans.filter((p) => p.source === "own").flatMap((p) => p.tasks);
   const ownOppgaver = oppgaveLister.filter((ol) => ol.source === "own").flatMap((ol) => ol.oppgaver);
 
-  // "Ferdig"-kortet: ferdige oppgaver fra oppgave_lister (own)
-  const doneOppgaver = ownOppgaver.filter((o) => o.status === "done").length;
-  const totalOppgaver = ownOppgaver.length;
+  // "Ferdig"-kortet: ferdige oppgaver — own + Planner
+  const plannerOppgaveDone = oppgaveLister
+    .filter((ol) => ol.source === "planner" && plannerStats.has(ol.id))
+    .reduce((s, ol) => s + (plannerStats.get(ol.id)?.done ?? 0), 0);
+  const plannerOppgaveTotal = oppgaveLister
+    .filter((ol) => ol.source === "planner" && plannerStats.has(ol.id))
+    .reduce((s, ol) => s + (plannerStats.get(ol.id)?.total ?? 0), 0);
+  const doneOppgaver = ownOppgaver.filter((o) => o.status === "done").length + plannerOppgaveDone;
+  const totalOppgaver = ownOppgaver.length + plannerOppgaveTotal;
 
-  // "Leveranser"-kortet: % ferdig fra prosjektplaner (own)
-  const planTasksDone = ownTasks.filter((t) => t.percent_complete === 100).length;
-  const planTasksTotal = ownTasks.length;
+  // "Leveranser"-kortet: % ferdig fra prosjektplaner — own + Planner
+  const plannerPlansDone = projectPlans
+    .filter((p) => p.source === "planner" && plannerStats.has(p.id))
+    .reduce((s, p) => s + (plannerStats.get(p.id)?.done ?? 0), 0);
+  const plannerPlansTotal = projectPlans
+    .filter((p) => p.source === "planner" && plannerStats.has(p.id))
+    .reduce((s, p) => s + (plannerStats.get(p.id)?.total ?? 0), 0);
+  const planTasksDone = ownTasks.filter((t) => t.percent_complete === 100).length + plannerPlansDone;
+  const planTasksTotal = ownTasks.length + plannerPlansTotal;
   const leveranserPct = planTasksTotal > 0 ? Math.round((planTasksDone / planTasksTotal) * 100) : null;
 
   const now = new Date();
