@@ -827,19 +827,21 @@ function PlannerTaskRowOppgave({
             <div style={{ width: 18, flexShrink: 0 }} />
           )
         )}
-        <div
-          onClick={onToggle ? () => { void handleToggleClick(); } : undefined}
-          title={onToggle ? (isDone ? "Merk som ikke ferdig" : "Merk som ferdig") : undefined}
-          style={{
-            width: 22, height: 22, borderRadius: "50%", flexShrink: 0,
-            border: `2px solid ${circleColor}`, background: isDone && !toggling ? circleColor : "transparent",
-            display: "flex", alignItems: "center", justifyContent: "center",
-            cursor: onToggle ? (toggling ? "wait" : "pointer") : "default",
-            opacity: toggling ? 0.5 : 1, transition: "opacity 0.15s",
-          }}
-        >
-          {isDone && !toggling && <span style={{ color: "#fff", fontSize: "0.7rem", fontWeight: 700 }}>✓</span>}
-        </div>
+        {onToggle && (
+          <div
+            onClick={() => { void handleToggleClick(); }}
+            title={isDone ? "Merk som ikke ferdig" : "Merk som ferdig"}
+            style={{
+              width: 22, height: 22, borderRadius: "50%", flexShrink: 0,
+              border: `2px solid ${circleColor}`, background: isDone && !toggling ? circleColor : "transparent",
+              display: "flex", alignItems: "center", justifyContent: "center",
+              cursor: toggling ? "wait" : "pointer",
+              opacity: toggling ? 0.5 : 1, transition: "opacity 0.15s",
+            }}
+          >
+            {isDone && !toggling && <span style={{ color: "#fff", fontSize: "0.7rem", fontWeight: 700 }}>✓</span>}
+          </div>
+        )}
         <span style={{
           flex: 1, fontSize: depth > 0 ? "0.85rem" : "0.9rem",
           textDecoration: isDone ? "line-through" : "none",

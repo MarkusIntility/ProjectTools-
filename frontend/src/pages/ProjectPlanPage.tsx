@@ -1218,21 +1218,23 @@ function PlannerTaskRow({
           )
         )}
 
-        <div
-          onClick={onToggle ? () => { void handleToggleClick(); } : undefined}
-          title={onToggle ? (isDone ? "Merk som ikke ferdig" : "Merk som ferdig") : undefined}
-          style={{
-            width: 24, height: 24, borderRadius: "50%", flexShrink: 0,
-            border: `2px solid ${color}`, background: isDone ? color : "transparent",
-            display: "flex", alignItems: "center", justifyContent: "center",
-            fontSize: "0.65rem", fontWeight: 700, color: isDone ? "#fff" : pct > 0 ? color : "transparent",
-            cursor: onToggle ? (toggling ? "wait" : "pointer") : "default",
-            opacity: toggling ? 0.5 : 1,
-            transition: "opacity 0.15s, border-color 0.15s",
-          }}
-        >
-          {toggling ? "" : isDone ? "✓" : pct > 0 ? `${pct}` : ""}
-        </div>
+        {onToggle && (
+          <div
+            onClick={() => { void handleToggleClick(); }}
+            title={isDone ? "Merk som ikke ferdig" : "Merk som ferdig"}
+            style={{
+              width: 24, height: 24, borderRadius: "50%", flexShrink: 0,
+              border: `2px solid ${color}`, background: isDone ? color : "transparent",
+              display: "flex", alignItems: "center", justifyContent: "center",
+              fontSize: "0.65rem", fontWeight: 700, color: isDone ? "#fff" : pct > 0 ? color : "transparent",
+              cursor: toggling ? "wait" : "pointer",
+              opacity: toggling ? 0.5 : 1,
+              transition: "opacity 0.15s, border-color 0.15s",
+            }}
+          >
+            {toggling ? "" : isDone ? "✓" : pct > 0 ? `${pct}` : ""}
+          </div>
+        )}
 
         <span style={{
           flex: 1, fontSize: depth > 0 ? "0.85rem" : "0.9rem",
