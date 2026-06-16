@@ -946,6 +946,17 @@ function PlannerTaskGrid({ data }: { data: PlannerData }) {
     }
   }
 
+  // L3+ tasks grouped by their parentTaskId — passed into rows for expand/collapse
+  const childrenByParent: Record<string, PlannerTask[]> = {};
+  if (isHierarchical) {
+    for (const t of data.tasks) {
+      if ((t.outlineLevel ?? 1) >= 3 && t.parentTaskId) {
+        if (!childrenByParent[t.parentTaskId]) childrenByParent[t.parentTaskId] = [];
+        childrenByParent[t.parentTaskId].push(t);
+      }
+    }
+  }
+
   // ── Flat data setup ──────────────────────────────────────────────────────────
   const allGrouped: Record<string, PlannerTask[]> = {};
   if (!isHierarchical) {
@@ -1069,7 +1080,7 @@ function PlannerTaskGrid({ data }: { data: PlannerData }) {
                     </div>
                   </div>
                   <div style={{ display: "grid", gap: "0.35rem" }}>
-                    {visibleL2.map((t) => <PlannerTaskRow key={t.id} task={t} fagomrade={getFagomrade(t)} />)}
+                    {visibleL2.map((t) => <PlannerTaskRow key={t.id} task={t} fagomrade={getFagomrade(t)} childrenByParent={childrenByParent} />)}
                   </div>
                 </div>
               );
@@ -1083,7 +1094,7 @@ function PlannerTaskGrid({ data }: { data: PlannerData }) {
                     <h3 className="bf-h4" style={{ margin: 0, flex: 1, color: "var(--bfc-base-c-2)" }}>Uten fase</h3>
                   </div>
                   <div style={{ display: "grid", gap: "0.35rem" }}>
-                    {visible.map((t) => <PlannerTaskRow key={t.id} task={t} fagomrade={getFagomrade(t)} />)}
+                    {visible.map((t) => <PlannerTaskRow key={t.id} task={t} fagomrade={getFagomrade(t)} childrenByParent={childrenByParent} />)}
                   </div>
                 </div>
               );
@@ -1123,81 +1134,132 @@ function PlannerTaskGrid({ data }: { data: PlannerData }) {
   );
 }
 
-function PlannerTaskRow({ task, fagomrade }: { task: PlannerTask; fagomrade?: string }) {
+function PlannerTaskRow({
+  task,
+  fagomrade,
+  childrenByParent,
+  depth = 0,
+}: {
+  task: PlannerTask;
+  fagomrade?: string;
+  childrenByParent?: Record<string, PlannerTask[]>;
+  depth?: number;
+}) {
   const [hovered, setHovered] = useState(false);
+  const [expanded, setExpanded] = useState(false);
   const pct = task.percentComplete;
   const isDone = pct === 100;
   const color = isDone ? "#2F9E44" : pct > 0 ? "#1971C2" : "#868E96";
 
+  const children = childrenByParent?.[task.id] ?? [];
+  const hasChildren = children.length > 0;
+
   return (
-    <div
-      onMouseEnter={() => setHovered(true)}
-      onMouseLeave={() => setHovered(false)}
-      style={{
-        display: "flex", alignItems: "center", gap: "0.75rem",
-        padding: "0.65rem 1rem", borderRadius: 7,
-        background: "var(--bfc-base-3)", border: "1px solid var(--bfc-base-dimmed)",
-        boxShadow: hovered ? "0 2px 8px rgba(0,0,0,0.07)" : "none",
-        transition: "box-shadow 0.15s",
-      }}
-    >
-      <div style={{
-        width: 24, height: 24, borderRadius: "50%", flexShrink: 0,
-        border: `2px solid ${color}`, background: isDone ? color : "transparent",
-        display: "flex", alignItems: "center", justifyContent: "center",
-        fontSize: "0.65rem", fontWeight: 700, color: isDone ? "#fff" : pct > 0 ? color : "transparent",
-      }}>
-        {isDone ? "✓" : pct > 0 ? `${pct}` : ""}
+    <div>
+      <div
+        onMouseEnter={() => setHovered(true)}
+        onMouseLeave={() => setHovered(false)}
+        style={{
+          display: "flex", alignItems: "center", gap: "0.75rem",
+          padding: "0.65rem 1rem", borderRadius: 7,
+          background: "var(--bfc-base-3)",
+          border: "1px solid var(--bfc-base-dimmed)",
+          borderLeft: depth > 0 ? "3px solid #0078D440" : "1px solid var(--bfc-base-dimmed)",
+          marginLeft: depth > 0 ? `${depth * 1.5}rem` : undefined,
+          boxShadow: hovered ? "0 2px 8px rgba(0,0,0,0.07)" : "none",
+          transition: "box-shadow 0.15s",
+        }}
+      >
+        {/* Expand/collapse chevron — only in hierarchical mode (childrenByParent defined) */}
+        {childrenByParent !== undefined && (
+          hasChildren ? (
+            <button
+              onClick={() => setExpanded((v) => !v)}
+              style={{
+                background: "none", border: "none", cursor: "pointer", padding: "0 2px",
+                fontSize: "0.75rem", color: "var(--bfc-base-c-2)", flexShrink: 0, lineHeight: 1,
+              }}
+              title={expanded ? "Skjul deloppgaver" : "Vis deloppgaver"}
+            >
+              {expanded ? "▾" : "▸"}
+            </button>
+          ) : (
+            <div style={{ width: 18, flexShrink: 0 }} />
+          )
+        )}
+
+        <div style={{
+          width: 24, height: 24, borderRadius: "50%", flexShrink: 0,
+          border: `2px solid ${color}`, background: isDone ? color : "transparent",
+          display: "flex", alignItems: "center", justifyContent: "center",
+          fontSize: "0.65rem", fontWeight: 700, color: isDone ? "#fff" : pct > 0 ? color : "transparent",
+        }}>
+          {isDone ? "✓" : pct > 0 ? `${pct}` : ""}
+        </div>
+
+        <span style={{
+          flex: 1, fontSize: depth > 0 ? "0.85rem" : "0.9rem",
+          textDecoration: isDone ? "line-through" : "none",
+          color: isDone ? "var(--bfc-base-c-3)" : "inherit",
+          overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
+        }}>
+          {task.title}
+        </span>
+
+        {/* Fagområde chip (hierarchical Premium, top-level rows only) or labels (Basic Planner) */}
+        {depth === 0 && fagomrade ? (
+          <span style={{
+            fontSize: "0.7rem", fontWeight: 600, flexShrink: 0,
+            padding: "2px 8px", borderRadius: 20,
+            background: "#0078D418", color: "#0078D4",
+            whiteSpace: "nowrap",
+          }}>
+            {fagomrade}
+          </span>
+        ) : depth === 0 && task.labels && task.labels.length > 0 ? (
+          <div style={{ display: "flex", gap: "0.3rem", flexShrink: 0, flexWrap: "wrap", maxWidth: 200 }}>
+            {task.labels.map((label) => (
+              <span key={label} style={{
+                fontSize: "0.7rem", fontWeight: 600,
+                padding: "2px 7px", borderRadius: 20,
+                background: "#7950F218", color: "#7950F2",
+                whiteSpace: "nowrap",
+              }}>
+                {label}
+              </span>
+            ))}
+          </div>
+        ) : null}
+
+        {(task.startDateTime || task.dueDateTime) && (
+          <span style={{ fontSize: "0.75rem", color: "var(--bfc-base-c-3)", flexShrink: 0, whiteSpace: "nowrap" }}>
+            {task.startDateTime && new Date(task.startDateTime).toLocaleDateString("nb-NO", { day: "numeric", month: "short" })}
+            {task.startDateTime && task.dueDateTime && " → "}
+            {task.dueDateTime && new Date(task.dueDateTime).toLocaleDateString("nb-NO", { day: "numeric", month: "short" })}
+          </span>
+        )}
+
+        <div style={{ width: 64, flexShrink: 0 }}>
+          <div style={{ display: "flex", justifyContent: "flex-end", fontSize: "0.7rem", color, marginBottom: 2 }}>{pct}%</div>
+          <div style={{ height: 4, borderRadius: 2, background: "var(--bfc-base-dimmed)", overflow: "hidden" }}>
+            <div style={{ width: `${pct}%`, height: "100%", background: color, borderRadius: 2 }} />
+          </div>
+        </div>
       </div>
 
-      <span style={{
-        flex: 1, fontSize: "0.9rem",
-        textDecoration: isDone ? "line-through" : "none",
-        color: isDone ? "var(--bfc-base-c-3)" : "inherit",
-        overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
-      }}>
-        {task.title}
-      </span>
-
-      {/* Fagområde chip (hierarchical Premium) or labels (Basic Planner) */}
-      {fagomrade ? (
-        <span style={{
-          fontSize: "0.7rem", fontWeight: 600, flexShrink: 0,
-          padding: "2px 8px", borderRadius: 20,
-          background: "#0078D418", color: "#0078D4",
-          whiteSpace: "nowrap",
-        }}>
-          {fagomrade}
-        </span>
-      ) : task.labels && task.labels.length > 0 ? (
-        <div style={{ display: "flex", gap: "0.3rem", flexShrink: 0, flexWrap: "wrap", maxWidth: 200 }}>
-          {task.labels.map((label) => (
-            <span key={label} style={{
-              fontSize: "0.7rem", fontWeight: 600,
-              padding: "2px 7px", borderRadius: 20,
-              background: "#7950F218", color: "#7950F2",
-              whiteSpace: "nowrap",
-            }}>
-              {label}
-            </span>
+      {/* Expanded children (L3+) */}
+      {hasChildren && expanded && (
+        <div style={{ display: "grid", gap: "0.25rem", marginTop: "0.25rem" }}>
+          {children.map((child) => (
+            <PlannerTaskRow
+              key={child.id}
+              task={child}
+              childrenByParent={childrenByParent}
+              depth={depth + 1}
+            />
           ))}
         </div>
-      ) : null}
-
-      {(task.startDateTime || task.dueDateTime) && (
-        <span style={{ fontSize: "0.75rem", color: "var(--bfc-base-c-3)", flexShrink: 0, whiteSpace: "nowrap" }}>
-          {task.startDateTime && new Date(task.startDateTime).toLocaleDateString("nb-NO", { day: "numeric", month: "short" })}
-          {task.startDateTime && task.dueDateTime && " → "}
-          {task.dueDateTime && new Date(task.dueDateTime).toLocaleDateString("nb-NO", { day: "numeric", month: "short" })}
-        </span>
       )}
-
-      <div style={{ width: 64, flexShrink: 0 }}>
-        <div style={{ display: "flex", justifyContent: "flex-end", fontSize: "0.7rem", color, marginBottom: 2 }}>{pct}%</div>
-        <div style={{ height: 4, borderRadius: 2, background: "var(--bfc-base-dimmed)", overflow: "hidden" }}>
-          <div style={{ width: `${pct}%`, height: "100%", background: color, borderRadius: 2 }} />
-        </div>
-      </div>
     </div>
   );
 }
