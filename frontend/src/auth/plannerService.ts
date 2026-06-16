@@ -31,8 +31,9 @@ export interface PlannerData {
   categoryDescriptions?: Record<string, string | null>;
   assigneeMap?: Record<string, string>; // userId → displayName
   source: "basic" | "premium";
-  premiumApiUrl?: string;  // set when source === "premium"
-  premiumDvScope?: string; // Dataverse OAuth scope, set when source === "premium"
+  premiumApiUrl?: string;   // set when source === "premium"
+  premiumDvScope?: string;  // Dataverse OAuth scope, set when source === "premium"
+  premiumPlanId?: string;   // Dataverse msdyn_project GUID, needed for PSS API calls
 }
 
 // ─── Dataverse types ──────────────────────────────────────────────────────────
@@ -297,7 +298,7 @@ async function fetchPlannerPremiumData(
       };
     });
 
-    return { buckets, tasks, source: "premium" as const, premiumApiUrl: apiUrl, premiumDvScope: dvScope };
+    return { buckets, tasks, source: "premium" as const, premiumApiUrl: apiUrl, premiumDvScope: dvScope, premiumPlanId: planId };
   }
 
   throw new Error("PREMIUM_PLAN: Planner Premium-planen ble ikke funnet i noen Dataverse-miljøer. Sjekk at du har tilgang til riktig Power Platform-miljø.");
@@ -381,32 +382,62 @@ export async function togglePlannerTask(
   done: boolean
 ): Promise<void> {
   if (data.source === "premium") {
-    if (!data.premiumApiUrl || !data.premiumDvScope) throw new Error("Mangler Dataverse-konfigurasjon.");
+    if (!data.premiumApiUrl || !data.premiumDvScope || !data.premiumPlanId) throw new Error("Mangler Dataverse-konfigurasjon.");
     const dvToken = await acquireToken(msal, account, [data.premiumDvScope]);
     const apiBase = data.premiumApiUrl.replace(/\/$/, "");
 
-    // msdyn_progress is a calculated field — update via msdyn_effortcompleted instead.
-    // Set effortcompleted = effort (done) or 0 (not done); Dataverse recalculates progress.
+    // Direct PATCH to msdyn_projecttask is blocked by a Dataverse plugin (error 0x80040265).
+    // Must use the Project Scheduling Service (PSS) API instead — a 3-step transaction.
     const task = data.tasks.find((t) => t.id === taskId);
-    const effort = task?.effort ?? 8; // fallback to 8h if not fetched
+    const effort = task?.effort ?? 8;
 
-    const res = await fetch(
-      `${apiBase}/api/data/v9.2/msdyn_projecttasks(${taskId})`,
-      {
-        method: "PATCH",
-        headers: {
-          Authorization: `Bearer ${dvToken}`,
-          "Content-Type": "application/json",
-          "OData-MaxVersion": "4.0",
-          "OData-Version": "4.0",
-        },
-        body: JSON.stringify({ msdyn_effortcompleted: done ? Math.max(effort, 0.001) : 0 }),
-      }
-    );
-    if (!res.ok && res.status !== 204) {
-      const err = await res.text();
-      console.error("[Planner] Toggle PATCH error:", err);
-      throw new Error(`Dataverse-feil (${res.status}): ${err.slice(0, 200)}`);
+    const pssHeaders = {
+      Authorization: `Bearer ${dvToken}`,
+      "Content-Type": "application/json",
+      "OData-MaxVersion": "4.0",
+      "OData-Version": "4.0",
+    };
+
+    // Step 1: Create an operation set (transaction container)
+    const createRes = await fetch(`${apiBase}/api/data/v9.1/msdyn_CreateOperationSetV1`, {
+      method: "POST",
+      headers: pssHeaders,
+      body: JSON.stringify({ ProjectId: data.premiumPlanId, Description: "Update task completion" }),
+    });
+    if (!createRes.ok) {
+      const err = await createRes.text();
+      console.error("[Planner] PSS CreateOperationSet error:", err);
+      throw new Error(`Dataverse PSS-feil (${createRes.status}): ${err.slice(0, 200)}`);
+    }
+    const { OperationSetId } = await createRes.json() as { OperationSetId: string };
+
+    // Step 2: Queue the task update
+    const entity = JSON.stringify({
+      "@odata.type": "Microsoft.Dynamics.CRM.msdyn_projecttask",
+      msdyn_projecttaskid: taskId,
+      msdyn_effortcompleted: done ? Math.max(effort, 0.001) : 0,
+    });
+    const updateRes = await fetch(`${apiBase}/api/data/v9.1/msdyn_PssUpdateV1`, {
+      method: "POST",
+      headers: pssHeaders,
+      body: JSON.stringify({ Entity: entity, OperationSetId }),
+    });
+    if (!updateRes.ok) {
+      const err = await updateRes.text();
+      console.error("[Planner] PSS PssUpdate error:", err);
+      throw new Error(`Dataverse PSS-feil (${updateRes.status}): ${err.slice(0, 200)}`);
+    }
+
+    // Step 3: Execute the operation set
+    const execRes = await fetch(`${apiBase}/api/data/v9.1/msdyn_ExecuteOperationSetV1`, {
+      method: "POST",
+      headers: pssHeaders,
+      body: JSON.stringify({ OperationSetId }),
+    });
+    if (!execRes.ok && execRes.status !== 204) {
+      const err = await execRes.text();
+      console.error("[Planner] PSS Execute error:", err);
+      throw new Error(`Dataverse PSS-feil (${execRes.status}): ${err.slice(0, 200)}`);
     }
   } else {
     const token = await acquireToken(msal, account, PLANNER_SCOPES);
