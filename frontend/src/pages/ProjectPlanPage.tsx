@@ -1293,6 +1293,7 @@ function PlannerTaskRow({
               task={child}
               childrenByParent={childrenByParent}
               depth={depth + 1}
+              onToggle={onToggle}
             />
           ))}
         </div>
