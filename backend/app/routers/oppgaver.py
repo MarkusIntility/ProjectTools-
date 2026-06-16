@@ -86,3 +86,15 @@ def delete_oppgave(project_id: str, liste_id: str, oppgave_id: str, db: Session 
         raise HTTPException(status_code=404, detail="Oppgave not found")
     db.delete(oppgave)
     db.commit()
+
+
+@router.put("/{liste_id}/set-primary", response_model=OppgaveListeResponse)
+def set_primary(project_id: str, liste_id: str, db: Session = Depends(get_db)):
+    liste = db.query(OppgaveListe).filter(OppgaveListe.id == liste_id, OppgaveListe.project_id == project_id).first()
+    if not liste:
+        raise HTTPException(status_code=404, detail="Oppgaveliste not found")
+    db.query(OppgaveListe).filter(OppgaveListe.project_id == project_id).update({"is_primary": False})
+    liste.is_primary = True
+    db.commit()
+    db.refresh(liste)
+    return liste

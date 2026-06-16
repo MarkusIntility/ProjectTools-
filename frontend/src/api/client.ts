@@ -43,6 +43,7 @@ export interface RiskMatrix {
   id: string;
   project_id: string;
   title: string;
+  is_primary: boolean;
   created_at: string;
   risks: RiskItem[];
 }
@@ -78,6 +79,7 @@ export interface MeetingPlan {
   id: string;
   project_id: string;
   title: string;
+  is_primary: boolean;
   created_at: string;
   meetings: Meeting[];
 }
@@ -114,6 +116,7 @@ export interface ProjectPlan {
   title: string;
   source: "own" | "planner" | "smartsheet";
   external_url: string | null;
+  is_primary: boolean;
   created_at: string;
   tasks: ProjectPlanTask[];
 }
@@ -135,6 +138,7 @@ export interface OppgaveListe {
   title: string;
   source: "own" | "planner" | "smartsheet";
   external_url: string | null;
+  is_primary: boolean;
   created_at: string;
   oppgaver: Oppgave[];
 }
@@ -183,6 +187,8 @@ export const api = {
       request<RiskItem>(`/projects/${projectId}/risk-matrices/${matrixId}/risks/${riskId}`, { method: "PUT", body: JSON.stringify(data) }),
     deleteRisk: (projectId: string, matrixId: string, riskId: string) =>
       request<void>(`/projects/${projectId}/risk-matrices/${matrixId}/risks/${riskId}`, { method: "DELETE" }),
+    setPrimary: (projectId: string, matrixId: string) =>
+      request<RiskMatrix>(`/projects/${projectId}/risk-matrices/${matrixId}/set-primary`, { method: "PUT" }),
   },
   communicationPlans: {
     list: (projectId: string) => request<CommunicationPlan[]>(`/projects/${projectId}/communication-plans/`),
@@ -215,6 +221,8 @@ export const api = {
       request<Meeting>(`/projects/${projectId}/meeting-plans/${planId}/meetings/${meetingId}`, { method: "PUT", body: JSON.stringify(data) }),
     deleteMeeting: (projectId: string, planId: string, meetingId: string) =>
       request<void>(`/projects/${projectId}/meeting-plans/${planId}/meetings/${meetingId}`, { method: "DELETE" }),
+    setPrimary: (projectId: string, planId: string) =>
+      request<MeetingPlan>(`/projects/${projectId}/meeting-plans/${planId}/set-primary`, { method: "PUT" }),
   },
   projectPlans: {
     list: (projectId: string) => request<ProjectPlan[]>(`/projects/${projectId}/project-plans/`),
@@ -231,6 +239,8 @@ export const api = {
       request<ProjectPlanTask>(`/projects/${projectId}/project-plans/${planId}/tasks/${taskId}`, { method: "PUT", body: JSON.stringify(data) }),
     deleteTask: (projectId: string, planId: string, taskId: string) =>
       request<void>(`/projects/${projectId}/project-plans/${planId}/tasks/${taskId}`, { method: "DELETE" }),
+    setPrimary: (projectId: string, planId: string) =>
+      request<ProjectPlan>(`/projects/${projectId}/project-plans/${planId}/set-primary`, { method: "PUT" }),
   },
   oppgaveLister: {
     list: (projectId: string) => request<OppgaveListe[]>(`/projects/${projectId}/oppgave-lister/`),
@@ -247,6 +257,8 @@ export const api = {
       request<Oppgave>(`/projects/${projectId}/oppgave-lister/${listeId}/oppgaver/${oppgaveId}`, { method: "PUT", body: JSON.stringify(data) }),
     deleteOppgave: (projectId: string, listeId: string, oppgaveId: string) =>
       request<void>(`/projects/${projectId}/oppgave-lister/${listeId}/oppgaver/${oppgaveId}`, { method: "DELETE" }),
+    setPrimary: (projectId: string, listeId: string) =>
+      request<OppgaveListe>(`/projects/${projectId}/oppgave-lister/${listeId}/set-primary`, { method: "PUT" }),
   },
   templates: {
     list: (type?: string) => request<Template[]>(`/templates/${type ? `?type=${type}` : ""}`),

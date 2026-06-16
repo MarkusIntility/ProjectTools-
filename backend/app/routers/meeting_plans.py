@@ -82,3 +82,15 @@ def delete_meeting(project_id: str, plan_id: str, meeting_id: str, db: Session =
         raise HTTPException(status_code=404, detail="Meeting not found")
     db.delete(meeting)
     db.commit()
+
+
+@router.put("/{plan_id}/set-primary", response_model=MeetingPlanResponse)
+def set_primary(project_id: str, plan_id: str, db: Session = Depends(get_db)):
+    plan = db.query(MeetingPlan).filter(MeetingPlan.id == plan_id, MeetingPlan.project_id == project_id).first()
+    if not plan:
+        raise HTTPException(status_code=404, detail="Meeting plan not found")
+    db.query(MeetingPlan).filter(MeetingPlan.project_id == project_id).update({"is_primary": False})
+    plan.is_primary = True
+    db.commit()
+    db.refresh(plan)
+    return plan

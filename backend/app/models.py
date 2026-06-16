@@ -1,6 +1,6 @@
 import uuid
 from datetime import datetime
-from sqlalchemy import String, Text, Integer, Float, DateTime, ForeignKey, Enum
+from sqlalchemy import String, Text, Integer, Float, DateTime, ForeignKey, Enum, Boolean
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from .database import Base
 import enum
@@ -33,6 +33,7 @@ class RiskMatrix(Base):
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_uuid)
     project_id: Mapped[str] = mapped_column(String(36), ForeignKey("projects.id"))
     title: Mapped[str] = mapped_column(String(200))
+    is_primary: Mapped[bool] = mapped_column(Boolean, default=False)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
 
     project: Mapped["Project"] = relationship(back_populates="risk_matrices")
@@ -107,6 +108,7 @@ class MeetingPlan(Base):
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_uuid)
     project_id: Mapped[str] = mapped_column(String(36), ForeignKey("projects.id"))
     title: Mapped[str] = mapped_column(String(200))
+    is_primary: Mapped[bool] = mapped_column(Boolean, default=False)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
 
     project: Mapped["Project"] = relationship(back_populates="meeting_plans")
@@ -163,6 +165,7 @@ class ProjectPlan(Base):
     title: Mapped[str] = mapped_column(String(200))
     source: Mapped[str] = mapped_column(String(20), default="own")
     external_url: Mapped[str | None] = mapped_column(String(500))
+    is_primary: Mapped[bool] = mapped_column(Boolean, default=False)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
 
     project: Mapped["Project"] = relationship(back_populates="project_plans")
@@ -213,6 +216,7 @@ class OppgaveListe(Base):
     title: Mapped[str] = mapped_column(String(200))
     source: Mapped[str] = mapped_column(String(20), default="own")
     external_url: Mapped[str | None] = mapped_column(String(500))
+    is_primary: Mapped[bool] = mapped_column(Boolean, default=False)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
 
     project: Mapped["Project"] = relationship(back_populates="oppgave_lister")

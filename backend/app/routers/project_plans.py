@@ -90,3 +90,15 @@ def delete_task(project_id: str, plan_id: str, task_id: str, db: Session = Depen
         raise HTTPException(status_code=404, detail="Task not found")
     db.delete(task)
     db.commit()
+
+
+@router.put("/{plan_id}/set-primary", response_model=ProjectPlanResponse)
+def set_primary(project_id: str, plan_id: str, db: Session = Depends(get_db)):
+    plan = db.query(ProjectPlan).filter(ProjectPlan.id == plan_id, ProjectPlan.project_id == project_id).first()
+    if not plan:
+        raise HTTPException(status_code=404, detail="Project plan not found")
+    db.query(ProjectPlan).filter(ProjectPlan.project_id == project_id).update({"is_primary": False})
+    plan.is_primary = True
+    db.commit()
+    db.refresh(plan)
+    return plan

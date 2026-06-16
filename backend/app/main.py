@@ -49,6 +49,28 @@ def _migrate_meetings():
 
 _migrate_meetings()
 
+
+def _migrate_is_primary():
+    """Add is_primary column to resource tables if not present."""
+    inspector = inspect(engine)
+    tables = {
+        "risk_matrices": "BIT",
+        "meeting_plans": "BIT",
+        "project_plans": "BIT",
+        "oppgave_lister": "BIT",
+    }
+    with engine.connect() as conn:
+        for table, typ in tables.items():
+            if table not in inspector.get_table_names():
+                continue
+            existing = {col["name"] for col in inspector.get_columns(table)}
+            if "is_primary" not in existing:
+                conn.execute(text(f"ALTER TABLE [{table}] ADD [is_primary] {typ} NOT NULL DEFAULT 0"))
+        conn.commit()
+
+
+_migrate_is_primary()
+
 app = FastAPI(title="ProjectTools API", version="1.0.0")
 
 app.add_middleware(

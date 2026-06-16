@@ -82,3 +82,15 @@ def delete_risk(project_id: str, matrix_id: str, risk_id: str, db: Session = Dep
         raise HTTPException(status_code=404, detail="Risk not found")
     db.delete(risk)
     db.commit()
+
+
+@router.put("/{matrix_id}/set-primary", response_model=RiskMatrixResponse)
+def set_primary(project_id: str, matrix_id: str, db: Session = Depends(get_db)):
+    matrix = db.query(RiskMatrix).filter(RiskMatrix.id == matrix_id, RiskMatrix.project_id == project_id).first()
+    if not matrix:
+        raise HTTPException(status_code=404, detail="Risk matrix not found")
+    db.query(RiskMatrix).filter(RiskMatrix.project_id == project_id).update({"is_primary": False})
+    matrix.is_primary = True
+    db.commit()
+    db.refresh(matrix)
+    return matrix

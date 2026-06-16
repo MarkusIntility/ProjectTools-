@@ -60,6 +60,7 @@ class RiskMatrixCreate(RiskMatrixBase):
 class RiskMatrixResponse(RiskMatrixBase):
     id: str
     project_id: str
+    is_primary: bool = False
     created_at: datetime
     risks: list[RiskItemResponse] = []
 
@@ -133,6 +134,7 @@ class MeetingPlanCreate(MeetingPlanBase):
 class MeetingPlanResponse(MeetingPlanBase):
     id: str
     project_id: str
+    is_primary: bool = False
     created_at: datetime
     meetings: list[MeetingResponse] = []
 
@@ -217,6 +219,7 @@ class ProjectPlanResponse(BaseModel):
     title: str
     source: str
     external_url: str | None = None
+    is_primary: bool = False
     created_at: datetime
     tasks: list[ProjectPlanTaskResponse] = []
 
@@ -257,6 +260,7 @@ class OppgaveListeResponse(BaseModel):
     title: str
     source: str
     external_url: str | None = None
+    is_primary: bool = False
     created_at: datetime
     oppgaver: list[OppgaveResponse] = []
 

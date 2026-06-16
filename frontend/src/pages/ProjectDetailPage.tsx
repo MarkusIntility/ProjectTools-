@@ -32,7 +32,7 @@ const SECTION_CONFIG = {
 };
 
 type PlanType = "risk" | "comm" | "meeting" | "projectplan" | "oppgave" | "runbook";
-type PlanItem = { id: string; title: string };
+type PlanItem = { id: string; title: string; is_primary?: boolean };
 type OwnStep = "choice" | "template" | "config";
 
 function TemplatePicker({ templates, selected, onSelect }: { templates: Template[]; selected: Template | null; onSelect: (t: Template) => void }) {
@@ -321,6 +321,23 @@ export default function ProjectDetailPage() {
     }
   }
 
+  async function handleSetPrimary(type: PlanType, id: string) {
+    if (!projectId) return;
+    if (type === "projectplan") {
+      const u = await api.projectPlans.setPrimary(projectId, id);
+      setProjectPlans((prev) => prev.map((p) => ({ ...p, is_primary: p.id === u.id })));
+    } else if (type === "oppgave") {
+      const u = await api.oppgaveLister.setPrimary(projectId, id);
+      setOppgaveLister((prev) => prev.map((p) => ({ ...p, is_primary: p.id === u.id })));
+    } else if (type === "risk") {
+      const u = await api.riskMatrices.setPrimary(projectId, id);
+      setRiskMatrices((prev) => prev.map((m) => ({ ...m, is_primary: m.id === u.id })));
+    } else if (type === "meeting") {
+      const u = await api.meetingPlans.setPrimary(projectId, id);
+      setMeetingPlans((prev) => prev.map((p) => ({ ...p, is_primary: p.id === u.id })));
+    }
+  }
+
   if (!project) return <div style={{ padding: "2rem" }}>Laster...</div>;
 
   const color = accentColor(project.name);
@@ -379,6 +396,7 @@ export default function ProjectDetailPage() {
         onOpen={(id) => navigate(`/projects/${projectId}/project-plan/${id}`)}
         onRename={(item) => { setRenameTarget({ ...item, type: "projectplan" }); setRenameValue(item.title); }}
         onDelete={(item) => setDeleteTarget({ ...item, type: "projectplan" })}
+        onSetPrimary={(item) => handleSetPrimary("projectplan", item.id)}
         countLabel={(pp) => { const src = (pp as ProjectPlan).source; return src === "planner" ? "Planner" : src === "smartsheet" ? "Smartsheet" : `${(pp as ProjectPlan).tasks.length} oppgaver`; }}
       />
       <Section type="oppgave" items={oppgaveLister}
@@ -386,6 +404,7 @@ export default function ProjectDetailPage() {
         onOpen={(id) => navigate(`/projects/${projectId}/oppgave/${id}`)}
         onRename={(item) => { setRenameTarget({ ...item, type: "oppgave" }); setRenameValue(item.title); }}
         onDelete={(item) => setDeleteTarget({ ...item, type: "oppgave" })}
+        onSetPrimary={(item) => handleSetPrimary("oppgave", item.id)}
         countLabel={(ol) => { const src = (ol as OppgaveListe).source; return src === "planner" ? "Planner" : src === "smartsheet" ? "Smartsheet" : `${(ol as OppgaveListe).oppgaver.length} oppgaver`; }}
       />
       <Section type="risk" items={riskMatrices}
@@ -393,6 +412,7 @@ export default function ProjectDetailPage() {
         onOpen={(id) => navigate(`/projects/${projectId}/risk-matrix/${id}`)}
         onRename={(item) => { setRenameTarget({ ...item, type: "risk" }); setRenameValue(item.title); }}
         onDelete={(item) => setDeleteTarget({ ...item, type: "risk" })}
+        onSetPrimary={(item) => handleSetPrimary("risk", item.id)}
         countLabel={(m) => `${(m as RiskMatrix).risks.length} risikoer`}
       />
       <Section type="comm" items={commPlans}
@@ -407,6 +427,7 @@ export default function ProjectDetailPage() {
         onOpen={(id) => navigate(`/projects/${projectId}/meeting-plan/${id}`)}
         onRename={(item) => { setRenameTarget({ ...item, type: "meeting" }); setRenameValue(item.title); }}
         onDelete={(item) => setDeleteTarget({ ...item, type: "meeting" })}
+        onSetPrimary={(item) => handleSetPrimary("meeting", item.id)}
         countLabel={(p) => `${(p as MeetingPlan).meetings.length} møter`}
       />
       <Section type="runbook" items={runbooks}
@@ -665,10 +686,11 @@ export default function ProjectDetailPage() {
   );
 }
 
-function Section({ type, items, onNew, onOpen, onRename, onDelete, countLabel }: {
+function Section({ type, items, onNew, onOpen, onRename, onDelete, onSetPrimary, countLabel }: {
   type: PlanType; items: PlanItem[]; onNew: () => void;
   onOpen: (id: string) => void; onRename: (item: PlanItem) => void;
-  onDelete: (item: PlanItem) => void; countLabel: (item: object) => string;
+  onDelete: (item: PlanItem) => void; onSetPrimary?: (item: PlanItem) => void;
+  countLabel: (item: object) => string;
 }) {
   const { color, label } = SECTION_CONFIG[type];
   return (
@@ -687,16 +709,25 @@ function Section({ type, items, onNew, onOpen, onRename, onDelete, countLabel }:
         </div>
       ) : (
         <div style={{ display: "grid", gap: "0.5rem" }}>
-          {items.map((item) => <PlanRow key={item.id} item={item} color={color} countLabel={countLabel} onOpen={() => onOpen(item.id)} onRename={() => onRename(item)} onDelete={() => onDelete(item)} />)}
+          {items.map((item) => (
+            <PlanRow key={item.id} item={item} color={color} countLabel={countLabel}
+              showPrimary={!!onSetPrimary && items.length > 1}
+              onOpen={() => onOpen(item.id)} onRename={() => onRename(item)}
+              onDelete={() => onDelete(item)}
+              onSetPrimary={onSetPrimary ? () => onSetPrimary(item) : undefined}
+            />
+          ))}
         </div>
       )}
     </div>
   );
 }
 
-function PlanRow({ item, color, countLabel, onOpen, onRename, onDelete }: {
+function PlanRow({ item, color, countLabel, showPrimary, onOpen, onRename, onDelete, onSetPrimary }: {
   item: PlanItem; color: string; countLabel: (item: object) => string;
+  showPrimary?: boolean;
   onOpen: () => void; onRename: () => void; onDelete: () => void;
+  onSetPrimary?: () => void;
 }) {
   const [hovered, setHovered] = useState(false);
   return (
@@ -704,12 +735,22 @@ function PlanRow({ item, color, countLabel, onOpen, onRename, onDelete }: {
       onClick={onOpen}
       onMouseEnter={() => setHovered(true)}
       onMouseLeave={() => setHovered(false)}
-      style={{ display: "flex", alignItems: "center", padding: "0.85rem 1.1rem", borderRadius: 7, background: "var(--bfc-base-3)", border: "1px solid var(--bfc-base-dimmed)", borderLeft: `3px solid ${hovered ? color : "var(--bfc-base-dimmed)"}`, cursor: "pointer", gap: "0.75rem", boxShadow: hovered ? "0 2px 10px rgba(0,0,0,0.08)" : "none", transform: hovered ? "translateX(2px)" : "translateX(0)", transition: "border-color 0.15s, box-shadow 0.15s, transform 0.15s" }}
+      style={{ display: "flex", alignItems: "center", padding: "0.85rem 1.1rem", borderRadius: 7, background: "var(--bfc-base-3)", border: `1px solid ${item.is_primary ? color : "var(--bfc-base-dimmed)"}`, borderLeft: `3px solid ${item.is_primary || hovered ? color : "var(--bfc-base-dimmed)"}`, cursor: "pointer", gap: "0.75rem", boxShadow: hovered ? "0 2px 10px rgba(0,0,0,0.08)" : "none", transform: hovered ? "translateX(2px)" : "translateX(0)", transition: "border-color 0.15s, box-shadow 0.15s, transform 0.15s" }}
     >
       <span style={{ flex: 1, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", fontWeight: hovered ? 600 : 400, transition: "font-weight 0.1s" }}>
         {item.title}
       </span>
       <div style={{ display: "flex", alignItems: "center", gap: "0.6rem", flexShrink: 0 }} onClick={(e) => e.stopPropagation()}>
+        {showPrimary && item.is_primary && (
+          <span style={{ fontSize: "0.72rem", fontWeight: 700, padding: "2px 8px", borderRadius: 20, background: `${color}20`, color, border: `1px solid ${color}40` }}>
+            Dashboard
+          </span>
+        )}
+        {showPrimary && !item.is_primary && onSetPrimary && (
+          <button onClick={onSetPrimary} style={{ background: "none", border: "none", cursor: "pointer", color: "var(--bfc-base-c-2)", padding: "4px 8px", borderRadius: 4, fontSize: "0.8rem", fontWeight: 500, opacity: hovered ? 0.7 : 0, transition: "opacity 0.15s" }}>
+            Sett som primær
+          </button>
+        )}
         <span style={{ fontSize: "0.75rem", fontWeight: 600, padding: "2px 10px", borderRadius: 20, background: `${color}18`, color }}>{countLabel(item)}</span>
         <button onClick={onRename} style={{ background: "none", border: "none", cursor: "pointer", color: "var(--bfc-base-c-2)", padding: "4px 8px", borderRadius: 4, fontSize: "0.8rem", fontWeight: 500, opacity: hovered ? 1 : 0.4, transition: "opacity 0.15s, color 0.15s" }} onMouseEnter={(e) => (e.currentTarget.style.color = color)} onMouseLeave={(e) => (e.currentTarget.style.color = "var(--bfc-base-c-2)")}>Endre</button>
         <div style={{ width: 1, height: 14, background: "var(--bfc-base-dimmed)" }} />
@@ -997,39 +1038,39 @@ function DashboardView({ riskMatrices, projectPlans, oppgaveLister, runbooks, me
     fetchPlannerDeadlines();
   }, [fetchPlannerDeadlines]);
 
+  // ── Primary resource selection (fallback to first if none marked) ───────────
+  const primaryMatrix      = riskMatrices.find((m) => m.is_primary) ?? riskMatrices[0];
+  const primaryOppgaveListe = oppgaveLister.find((ol) => ol.is_primary) ?? oppgaveLister[0];
+  const primaryMeetingPlan  = meetingPlans.find((mp) => mp.is_primary) ?? meetingPlans[0];
+  const primaryProjectPlan  = projectPlans.find((p) => p.is_primary) ?? projectPlans[0];
+
   // ── Derive data ─────────────────────────────────────────────────────────────
-  const allRisks = riskMatrices.flatMap((m) => m.risks);
+  const allRisks = (primaryMatrix?.risks ?? []);
   const openRisks = allRisks.filter((r) => r.status === "open");
   const highestScore = openRisks.reduce((max, r) => Math.max(max, r.risk_score), 0);
   const topRisks = [...openRisks].sort((a, b) => b.risk_score - a.risk_score).slice(0, 4);
 
-  const ownTasks = projectPlans.filter((p) => p.source === "own").flatMap((p) => p.tasks);
-  const ownOppgaver = oppgaveLister.filter((ol) => ol.source === "own").flatMap((ol) => ol.oppgaver);
+  // "Ferdig"-kortet: ferdige oppgaver fra primær oppgaveliste
+  const primaryOlStats = primaryOppgaveListe ? plannerStats.get(primaryOppgaveListe.id) : undefined;
+  const doneOppgaver = primaryOppgaveListe?.source === "own"
+    ? primaryOppgaveListe.oppgaver.filter((o) => o.status === "done").length
+    : (primaryOlStats?.done ?? 0);
+  const totalOppgaver = primaryOppgaveListe?.source === "own"
+    ? primaryOppgaveListe.oppgaver.length
+    : (primaryOlStats?.total ?? 0);
 
-  // "Ferdig"-kortet: ferdige oppgaver — own + Planner
-  const plannerOppgaveDone = oppgaveLister
-    .filter((ol) => ol.source === "planner" && plannerStats.has(ol.id))
-    .reduce((s, ol) => s + (plannerStats.get(ol.id)?.done ?? 0), 0);
-  const plannerOppgaveTotal = oppgaveLister
-    .filter((ol) => ol.source === "planner" && plannerStats.has(ol.id))
-    .reduce((s, ol) => s + (plannerStats.get(ol.id)?.total ?? 0), 0);
-  const doneOppgaver = ownOppgaver.filter((o) => o.status === "done").length + plannerOppgaveDone;
-  const totalOppgaver = ownOppgaver.length + plannerOppgaveTotal;
-
-  // "Leveranser"-kortet: % ferdig fra prosjektplaner — own + Planner
-  const plannerPlansDone = projectPlans
-    .filter((p) => p.source === "planner" && plannerStats.has(p.id))
-    .reduce((s, p) => s + (plannerStats.get(p.id)?.done ?? 0), 0);
-  const plannerPlansTotal = projectPlans
-    .filter((p) => p.source === "planner" && plannerStats.has(p.id))
-    .reduce((s, p) => s + (plannerStats.get(p.id)?.total ?? 0), 0);
-  const planTasksDone = ownTasks.filter((t) => t.percent_complete === 100).length + plannerPlansDone;
-  const planTasksTotal = ownTasks.length + plannerPlansTotal;
+  // "Leveranser"-kortet: % ferdig fra primær prosjektplan
+  const primaryPlanStats = primaryProjectPlan ? plannerStats.get(primaryProjectPlan.id) : undefined;
+  const planTasksDone = primaryProjectPlan?.source === "own"
+    ? primaryProjectPlan.tasks.filter((t) => t.percent_complete === 100).length
+    : (primaryPlanStats?.done ?? 0);
+  const planTasksTotal = primaryProjectPlan?.source === "own"
+    ? primaryProjectPlan.tasks.length
+    : (primaryPlanStats?.total ?? 0);
   const leveranserPct = planTasksTotal > 0 ? Math.round((planTasksDone / planTasksTotal) * 100) : null;
 
   const now = new Date();
-  const allMeetings = meetingPlans.flatMap((mp) => mp.meetings);
-  const nextMeeting = allMeetings
+  const nextMeeting = (primaryMeetingPlan?.meetings ?? [])
     .filter((m) => new Date(m.date) > now)
     .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime())[0] ?? null;
 
@@ -1108,10 +1149,8 @@ function DashboardView({ riskMatrices, projectPlans, oppgaveLister, runbooks, me
     ? "Ingen åpne risikoer"
     : `${DASH_RISK[dashRiskLevel(highestScore)].label} risiko · klikk for å se`;
 
-  const firstMatrix = riskMatrices[0];
-
-  const hasPlannerOppgaver = isMsalConfigured && oppgaveLister.some((ol) => ol.source === "planner");
-  const hasPlannerPlans   = isMsalConfigured && projectPlans.some((p) => p.source === "planner");
+  const hasPlannerOppgaver = isMsalConfigured && primaryOppgaveListe?.source === "planner";
+  const hasPlannerPlans   = isMsalConfigured && primaryProjectPlan?.source === "planner";
   const msalAuthenticated = isMsalConfigured && msalInstance.getAllAccounts().length > 0;
 
   const oppgaverSub =
@@ -1136,14 +1175,14 @@ function DashboardView({ riskMatrices, projectPlans, oppgaveLister, runbooks, me
           label="Åpne risikoer"
           sub={riskKpiSub}
           color={riskKpiColor}
-          onClick={firstMatrix ? () => navigate(`/projects/${projectId}/risk-matrix/${firstMatrix.id}`) : undefined}
+          onClick={primaryMatrix ? () => navigate(`/projects/${projectId}/risk-matrix/${primaryMatrix.id}`) : undefined}
         />
         <KpiCard
           value={plannerLoading && hasPlannerOppgaver ? "…" : doneOppgaver}
           label="Ferdige oppgaver"
           sub={oppgaverSub}
           color="#1971C2"
-          onClick={oppgaveLister[0] ? () => navigate(`/projects/${projectId}/oppgave/${oppgaveLister[0].id}`) : undefined}
+          onClick={primaryOppgaveListe ? () => navigate(`/projects/${projectId}/oppgave/${primaryOppgaveListe.id}`) : undefined}
         />
         <KpiCard
           value={nextMeeting
@@ -1158,7 +1197,7 @@ function DashboardView({ riskMatrices, projectPlans, oppgaveLister, runbooks, me
           label="Leveranser"
           sub={leveranserSub}
           color="#1098AD"
-          onClick={projectPlans[0] ? () => navigate(`/projects/${projectId}/project-plan/${projectPlans[0].id}`) : undefined}
+          onClick={primaryProjectPlan ? () => navigate(`/projects/${projectId}/project-plan/${primaryProjectPlan.id}`) : undefined}
         />
       </div>
 
@@ -1170,8 +1209,8 @@ function DashboardView({ riskMatrices, projectPlans, oppgaveLister, runbooks, me
           <div style={{ borderRadius: 10, background: "var(--bfc-base-3)", border: "1px solid var(--bfc-base-dimmed)", padding: "1.25rem" }}>
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "1rem" }}>
               <h3 className="bf-h4" style={{ margin: 0 }}>Topp risikoer</h3>
-              {firstMatrix && (
-                <button onClick={() => navigate(`/projects/${projectId}/risk-matrix/${firstMatrix.id}`)}
+              {primaryMatrix && (
+                <button onClick={() => navigate(`/projects/${projectId}/risk-matrix/${primaryMatrix.id}`)}
                   style={{ background: "none", border: "none", cursor: "pointer", color: "#E03131", fontSize: "0.8rem", fontWeight: 600, padding: 0 }}>
                   Se alle →
                 </button>
