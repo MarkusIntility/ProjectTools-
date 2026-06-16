@@ -626,16 +626,21 @@ function PlannerView({ liste, srcCfg, account, data, loading, error, msalReady, 
   );
 }
 
-// ─── Flat Planner task list ───────────────────────────────────────────────────
+// ─── Planner task list ────────────────────────────────────────────────────────
 
 function FlatPlannerList({ data, onToggle }: { data: PlannerData; onToggle?: (taskId: string, done: boolean) => Promise<void> }) {
   const assigneeMap = data.assigneeMap ?? {};
   const [filter, setFilter] = useState<Filter>("all");
 
-  const allTasks = data.tasks;
-  const total = allTasks.length;
-  const done = allTasks.filter((t) => t.percentComplete === 100).length;
-  const inProg = allTasks.filter((t) => t.percentComplete > 0 && t.percentComplete < 100).length;
+  const isHierarchical = data.tasks.some((t) => (t.outlineLevel ?? 1) > 1);
+
+  // Stats source: L2 tasks in hierarchical mode, all tasks in flat mode
+  const statSource = isHierarchical
+    ? data.tasks.filter((t) => (t.outlineLevel ?? 1) === 2)
+    : data.tasks;
+  const total = statSource.length;
+  const done = statSource.filter((t) => t.percentComplete === 100).length;
+  const inProg = statSource.filter((t) => t.percentComplete > 0 && t.percentComplete < 100).length;
   const remaining = total - done - inProg;
 
   function matchFilter(t: PlannerTask): boolean {
@@ -645,7 +650,29 @@ function FlatPlannerList({ data, onToggle }: { data: PlannerData; onToggle?: (ta
     return true;
   }
 
-  const visible = allTasks.filter(matchFilter);
+  // ── Hierarchical setup ───────────────────────────────────────────────────────
+  const l1Tasks = isHierarchical ? data.tasks.filter((t) => (t.outlineLevel ?? 1) === 1) : [];
+  const l2ByL1: Record<string, PlannerTask[]> = {};
+  if (isHierarchical) {
+    for (const t of data.tasks.filter((t2) => (t2.outlineLevel ?? 1) === 2)) {
+      const key = t.parentTaskId ?? "__orphan__";
+      if (!l2ByL1[key]) l2ByL1[key] = [];
+      l2ByL1[key].push(t);
+    }
+  }
+  const childrenByParent: Record<string, PlannerTask[]> = {};
+  if (isHierarchical) {
+    for (const t of data.tasks) {
+      if ((t.outlineLevel ?? 1) >= 3 && t.parentTaskId) {
+        if (!childrenByParent[t.parentTaskId]) childrenByParent[t.parentTaskId] = [];
+        childrenByParent[t.parentTaskId].push(t);
+      }
+    }
+  }
+
+  // ── Flat setup ───────────────────────────────────────────────────────────────
+  const flatVisible = isHierarchical ? [] : statSource.filter(matchFilter);
+  const visibleCount = isHierarchical ? statSource.filter(matchFilter).length : flatVisible.length;
 
   const STAT_CARDS = [
     { key: "all" as Filter, label: "Totalt", value: total, color: "#868E96" },
@@ -682,7 +709,7 @@ function FlatPlannerList({ data, onToggle }: { data: PlannerData; onToggle?: (ta
       {filter !== "all" && (
         <div style={{ display: "flex", alignItems: "center", gap: "0.5rem", marginBottom: "1rem" }}>
           <span style={{ fontSize: "0.8rem", color: "var(--bfc-base-c-2)" }}>
-            Viser: <strong>{FILTER_LABELS[filter]}</strong> ({visible.length} oppgaver)
+            Viser: <strong>{FILTER_LABELS[filter]}</strong> ({visibleCount} oppgaver)
           </span>
           <button onClick={() => setFilter("all")}
             style={{ background: "none", border: "1px solid var(--bfc-base-dimmed)", cursor: "pointer", color: "var(--bfc-base-c-2)", padding: "1px 8px", borderRadius: 4, fontSize: "0.78rem" }}>
@@ -691,60 +718,168 @@ function FlatPlannerList({ data, onToggle }: { data: PlannerData; onToggle?: (ta
         </div>
       )}
 
-      <div style={{ display: "grid", gap: "0.35rem" }}>
-        {visible.map((task) => {
-          const status = taskStatus(task.percentComplete);
-          const cfg = { done: STATUS_CONFIG.done, in_progress: STATUS_CONFIG.in_progress, not_started: STATUS_CONFIG.not_started }[status];
-          const isDone = status === "done";
-          return (
-            <div key={task.id} style={{
-              display: "flex", alignItems: "center", gap: "0.75rem",
-              padding: "0.65rem 1rem", borderRadius: 7,
-              background: "var(--bfc-base-3)", border: "1px solid var(--bfc-base-dimmed)",
-            }}>
-              <div
-                onClick={onToggle ? () => { void onToggle(task.id, !isDone); } : undefined}
-                title={onToggle ? (isDone ? "Merk som ikke ferdig" : "Merk som ferdig") : undefined}
-                style={{
-                  width: 22, height: 22, borderRadius: "50%", flexShrink: 0,
-                  border: `2px solid ${cfg.color}`, background: isDone ? cfg.color : "transparent",
-                  display: "flex", alignItems: "center", justifyContent: "center",
-                  cursor: onToggle ? "pointer" : "default",
-                  transition: "opacity 0.15s",
-                }}
-              >
-                {isDone && <span style={{ color: "#fff", fontSize: "0.7rem", fontWeight: 700 }}>✓</span>}
-              </div>
-              <span style={{
-                flex: 1, fontSize: "0.9rem",
-                textDecoration: isDone ? "line-through" : "none",
-                color: isDone ? "var(--bfc-base-c-3)" : "inherit",
-                overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
-              }}>
-                {task.title}
-              </span>
-              {(() => {
-                const assignees = Object.keys(task.assignments ?? {})
-                  .map((id) => assigneeMap[id])
-                  .filter(Boolean);
-                return assignees.length > 0 ? (
-                  <span style={{ fontSize: "0.75rem", padding: "2px 8px", borderRadius: 20, background: "var(--bfc-base-dimmed)", color: "var(--bfc-base-c-2)", flexShrink: 0, whiteSpace: "nowrap" }}>
-                    {assignees.join(", ")}
-                  </span>
-                ) : null;
-              })()}
-              {task.dueDateTime && (
-                <span style={{ fontSize: "0.75rem", color: "var(--bfc-base-c-3)", flexShrink: 0, whiteSpace: "nowrap" }}>
-                  {new Date(task.dueDateTime).toLocaleDateString("nb-NO", { day: "numeric", month: "short" })}
-                </span>
-              )}
-              <span style={{ fontSize: "0.72rem", fontWeight: 600, padding: "2px 8px", borderRadius: 20, background: cfg.bg, color: cfg.color, flexShrink: 0 }}>
-                {cfg.label}
-              </span>
-            </div>
-          );
-        })}
+      <div style={{ display: "grid", gap: isHierarchical ? "1.5rem" : "0.35rem" }}>
+        {isHierarchical ? (
+          <>
+            {l1Tasks.map((l1) => {
+              const allL2 = l2ByL1[l1.id] ?? [];
+              const visibleL2 = allL2.filter(matchFilter);
+              if (visibleL2.length === 0 && filter !== "all") return null;
+              const sectionDone = allL2.filter((t) => t.percentComplete === 100).length;
+              const pct = allL2.length > 0 ? Math.round((sectionDone / allL2.length) * 100) : 0;
+              return (
+                <div key={l1.id}>
+                  <div style={{ display: "flex", alignItems: "center", gap: "0.75rem", marginBottom: "0.5rem" }}>
+                    <h3 className="bf-h4" style={{ margin: 0, flex: 1 }}>{l1.title}</h3>
+                    <span style={{ fontSize: "0.75rem", color: "var(--bfc-base-c-3)" }}>
+                      {sectionDone}/{allL2.length} ferdig
+                      {filter !== "all" && visibleL2.length < allL2.length && ` (viser ${visibleL2.length})`}
+                    </span>
+                    <div style={{ width: 80, height: 6, borderRadius: 3, background: "var(--bfc-base-dimmed)", overflow: "hidden" }}>
+                      <div style={{ width: `${pct}%`, height: "100%", background: pct === 100 ? "#2F9E44" : "#1971C2", borderRadius: 3, transition: "width 0.3s" }} />
+                    </div>
+                  </div>
+                  <div style={{ display: "grid", gap: "0.35rem" }}>
+                    {visibleL2.map((t) => (
+                      <PlannerTaskRowOppgave key={t.id} task={t} assigneeMap={assigneeMap} childrenByParent={childrenByParent} onToggle={onToggle} />
+                    ))}
+                  </div>
+                </div>
+              );
+            })}
+            {(l2ByL1["__orphan__"] ?? []).length > 0 && (() => {
+              const orphanVisible = (l2ByL1["__orphan__"] ?? []).filter(matchFilter);
+              if (orphanVisible.length === 0 && filter !== "all") return null;
+              return (
+                <div>
+                  <h3 className="bf-h4" style={{ margin: "0 0 0.5rem", color: "var(--bfc-base-c-2)" }}>Uten fase</h3>
+                  <div style={{ display: "grid", gap: "0.35rem" }}>
+                    {orphanVisible.map((t) => (
+                      <PlannerTaskRowOppgave key={t.id} task={t} assigneeMap={assigneeMap} childrenByParent={childrenByParent} onToggle={onToggle} />
+                    ))}
+                  </div>
+                </div>
+              );
+            })()}
+          </>
+        ) : (
+          flatVisible.map((task) => (
+            <PlannerTaskRowOppgave key={task.id} task={task} assigneeMap={assigneeMap} onToggle={onToggle} />
+          ))
+        )}
       </div>
+    </div>
+  );
+}
+
+function PlannerTaskRowOppgave({
+  task, assigneeMap, childrenByParent, depth = 0, onToggle,
+}: {
+  task: PlannerTask;
+  assigneeMap: Record<string, string>;
+  childrenByParent?: Record<string, PlannerTask[]>;
+  depth?: number;
+  onToggle?: (taskId: string, done: boolean) => Promise<void>;
+}) {
+  const [toggling, setToggling] = useState(false);
+  const [expanded, setExpanded] = useState(false);
+  const status = taskStatus(task.percentComplete);
+  const cfg = STATUS_CONFIG[status];
+  const isDone = status === "done";
+  const circleColor = toggling ? "#ADB5BD" : cfg.color;
+  const children = childrenByParent?.[task.id] ?? [];
+  const hasChildren = children.length > 0;
+
+  async function handleToggleClick() {
+    if (!onToggle || toggling) return;
+    setToggling(true);
+    try {
+      await onToggle(task.id, !isDone);
+    } finally {
+      setToggling(false);
+    }
+  }
+
+  return (
+    <div>
+      <div style={{
+        display: "flex", alignItems: "center", gap: "0.75rem",
+        padding: "0.65rem 1rem", borderRadius: 7,
+        background: "var(--bfc-base-3)",
+        border: "1px solid var(--bfc-base-dimmed)",
+        borderLeft: depth > 0 ? "3px solid #0078D440" : "1px solid var(--bfc-base-dimmed)",
+        marginLeft: depth > 0 ? `${depth * 1.5}rem` : undefined,
+      }}>
+        {childrenByParent !== undefined && (
+          hasChildren ? (
+            <button
+              onClick={() => setExpanded((v) => !v)}
+              style={{
+                background: "none", border: "none", cursor: "pointer", padding: "0 2px",
+                fontSize: "0.75rem", color: "var(--bfc-base-c-2)", flexShrink: 0, lineHeight: 1,
+              }}
+              title={expanded ? "Skjul deloppgaver" : "Vis deloppgaver"}
+            >
+              {expanded ? "▾" : "▸"}
+            </button>
+          ) : (
+            <div style={{ width: 18, flexShrink: 0 }} />
+          )
+        )}
+        <div
+          onClick={onToggle ? () => { void handleToggleClick(); } : undefined}
+          title={onToggle ? (isDone ? "Merk som ikke ferdig" : "Merk som ferdig") : undefined}
+          style={{
+            width: 22, height: 22, borderRadius: "50%", flexShrink: 0,
+            border: `2px solid ${circleColor}`, background: isDone && !toggling ? circleColor : "transparent",
+            display: "flex", alignItems: "center", justifyContent: "center",
+            cursor: onToggle ? (toggling ? "wait" : "pointer") : "default",
+            opacity: toggling ? 0.5 : 1, transition: "opacity 0.15s",
+          }}
+        >
+          {isDone && !toggling && <span style={{ color: "#fff", fontSize: "0.7rem", fontWeight: 700 }}>✓</span>}
+        </div>
+        <span style={{
+          flex: 1, fontSize: depth > 0 ? "0.85rem" : "0.9rem",
+          textDecoration: isDone ? "line-through" : "none",
+          color: isDone ? "var(--bfc-base-c-3)" : "inherit",
+          overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
+        }}>
+          {task.title}
+        </span>
+        {depth === 0 && (() => {
+          const assignees = Object.keys(task.assignments ?? {}).map((id) => assigneeMap[id]).filter(Boolean);
+          return assignees.length > 0 ? (
+            <span style={{ fontSize: "0.75rem", padding: "2px 8px", borderRadius: 20, background: "var(--bfc-base-dimmed)", color: "var(--bfc-base-c-2)", flexShrink: 0, whiteSpace: "nowrap" }}>
+              {assignees.join(", ")}
+            </span>
+          ) : null;
+        })()}
+        {task.dueDateTime && (
+          <span style={{ fontSize: "0.75rem", color: "var(--bfc-base-c-3)", flexShrink: 0, whiteSpace: "nowrap" }}>
+            {new Date(task.dueDateTime).toLocaleDateString("nb-NO", { day: "numeric", month: "short" })}
+          </span>
+        )}
+        {depth === 0 && (
+          <span style={{ fontSize: "0.72rem", fontWeight: 600, padding: "2px 8px", borderRadius: 20, background: cfg.bg, color: cfg.color, flexShrink: 0 }}>
+            {cfg.label}
+          </span>
+        )}
+      </div>
+      {hasChildren && expanded && (
+        <div style={{ display: "grid", gap: "0.25rem", marginTop: "0.25rem" }}>
+          {children.map((child) => (
+            <PlannerTaskRowOppgave
+              key={child.id}
+              task={child}
+              assigneeMap={assigneeMap}
+              childrenByParent={childrenByParent}
+              depth={depth + 1}
+              onToggle={onToggle}
+            />
+          ))}
+        </div>
+      )}
     </div>
   );
 }

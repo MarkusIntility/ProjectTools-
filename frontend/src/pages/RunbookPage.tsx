@@ -1195,6 +1195,17 @@ function PlannerTaskList({ data, onToggleTask }: { data: PlannerData; onToggleTa
     }
   }
 
+  // L3+ tasks grouped by parent — used for expand/collapse in task rows
+  const childrenByParent: Record<string, PlannerTask[]> = {};
+  if (isHierarchical) {
+    for (const t of data.tasks) {
+      if ((t.outlineLevel ?? 1) >= 3 && t.parentTaskId) {
+        if (!childrenByParent[t.parentTaskId]) childrenByParent[t.parentTaskId] = [];
+        childrenByParent[t.parentTaskId].push(t);
+      }
+    }
+  }
+
   // ── Flat setup ──────────────────────────────────────────────────────────────
   const allGrouped: Record<string, PlannerTask[]> = {};
   if (!isHierarchical) {
@@ -1315,7 +1326,7 @@ function PlannerTaskList({ data, onToggleTask }: { data: PlannerData; onToggleTa
                     </div>
                   </div>
                   <div style={{ display: "grid", gap: "0.35rem" }}>
-                    {visibleL2.map((t) => <PlannerTaskRow key={t.id} task={t} fagomrade={getFagomrade(t)} onToggle={onToggleTask} />)}
+                    {visibleL2.map((t) => <PlannerTaskRow key={t.id} task={t} fagomrade={getFagomrade(t)} onToggle={onToggleTask} childrenByParent={childrenByParent} />)}
                   </div>
                 </div>
               );
@@ -1330,7 +1341,7 @@ function PlannerTaskList({ data, onToggleTask }: { data: PlannerData; onToggleTa
                 <div>
                   <h3 className="bf-h4" style={{ margin: "0 0 0.5rem", color: "var(--bfc-base-c-2)" }}>Uten fase</h3>
                   <div style={{ display: "grid", gap: "0.35rem" }}>
-                    {visible.map((t) => <PlannerTaskRow key={t.id} task={t} fagomrade={getFagomrade(t)} onToggle={onToggleTask} />)}
+                    {visible.map((t) => <PlannerTaskRow key={t.id} task={t} fagomrade={getFagomrade(t)} onToggle={onToggleTask} childrenByParent={childrenByParent} />)}
                   </div>
                 </div>
               );
@@ -1358,7 +1369,7 @@ function PlannerTaskList({ data, onToggleTask }: { data: PlannerData; onToggleTa
                     </div>
                   </div>
                   <div style={{ display: "grid", gap: "0.35rem" }}>
-                    {tasks.map((task) => <PlannerTaskRow key={task.id} task={task} onToggle={onToggleTask} />)}
+                    {tasks.map((task) => <PlannerTaskRow key={task.id} task={task} onToggle={onToggleTask} childrenByParent={childrenByParent} />)}
                   </div>
                 </div>
               );
@@ -1370,13 +1381,24 @@ function PlannerTaskList({ data, onToggleTask }: { data: PlannerData; onToggleTa
   );
 }
 
-function PlannerTaskRow({ task, fagomrade, onToggle }: { task: PlannerTask; fagomrade?: string; onToggle?: (taskId: string, done: boolean) => Promise<void> }) {
+function PlannerTaskRow({
+  task, fagomrade, onToggle, childrenByParent, depth = 0,
+}: {
+  task: PlannerTask;
+  fagomrade?: string;
+  onToggle?: (taskId: string, done: boolean) => Promise<void>;
+  childrenByParent?: Record<string, PlannerTask[]>;
+  depth?: number;
+}) {
   const [hovered, setHovered] = useState(false);
   const [toggling, setToggling] = useState(false);
+  const [expanded, setExpanded] = useState(false);
   const status = taskStatus(task.percentComplete);
   const cfg = STATUS_CONFIG[status];
   const isDone = status === "done";
   const circleColor = toggling ? "#ADB5BD" : cfg.color;
+  const children = childrenByParent?.[task.id] ?? [];
+  const hasChildren = children.length > 0;
 
   async function handleToggleClick() {
     if (!onToggle || toggling) return;
@@ -1389,84 +1411,109 @@ function PlannerTaskRow({ task, fagomrade, onToggle }: { task: PlannerTask; fago
   }
 
   return (
-    <div
-      onMouseEnter={() => setHovered(true)}
-      onMouseLeave={() => setHovered(false)}
-      style={{
-        display: "flex", alignItems: "center", gap: "0.75rem",
-        padding: "0.65rem 1rem", borderRadius: 7,
-        background: "var(--bfc-base-3)", border: "1px solid var(--bfc-base-dimmed)",
-        boxShadow: hovered ? "0 2px 8px rgba(0,0,0,0.07)" : "none",
-        transition: "box-shadow 0.15s",
-      }}
-    >
+    <div>
       <div
-        onClick={onToggle ? () => { void handleToggleClick(); } : undefined}
-        title={onToggle ? (isDone ? "Merk som ikke ferdig" : "Merk som ferdig") : undefined}
+        onMouseEnter={() => setHovered(true)}
+        onMouseLeave={() => setHovered(false)}
         style={{
-          width: 22, height: 22, borderRadius: "50%", flexShrink: 0,
-          border: `2px solid ${circleColor}`,
-          background: isDone && !toggling ? circleColor : "transparent",
-          display: "flex", alignItems: "center", justifyContent: "center",
-          cursor: onToggle ? (toggling ? "wait" : "pointer") : "default",
-          opacity: toggling ? 0.5 : 1,
-          transition: "opacity 0.15s",
+          display: "flex", alignItems: "center", gap: "0.75rem",
+          padding: "0.65rem 1rem", borderRadius: 7,
+          background: "var(--bfc-base-3)",
+          border: "1px solid var(--bfc-base-dimmed)",
+          borderLeft: depth > 0 ? "3px solid #0078D440" : "1px solid var(--bfc-base-dimmed)",
+          marginLeft: depth > 0 ? `${depth * 1.5}rem` : undefined,
+          boxShadow: hovered ? "0 2px 8px rgba(0,0,0,0.07)" : "none",
+          transition: "box-shadow 0.15s",
         }}
       >
-        {isDone && !toggling && <span style={{ color: "#fff", fontSize: "0.7rem", fontWeight: 700 }}>✓</span>}
+        {childrenByParent !== undefined && (
+          hasChildren ? (
+            <button
+              onClick={() => setExpanded((v) => !v)}
+              style={{
+                background: "none", border: "none", cursor: "pointer", padding: "0 2px",
+                fontSize: "0.75rem", color: "var(--bfc-base-c-2)", flexShrink: 0, lineHeight: 1,
+              }}
+              title={expanded ? "Skjul deloppgaver" : "Vis deloppgaver"}
+            >
+              {expanded ? "▾" : "▸"}
+            </button>
+          ) : (
+            <div style={{ width: 18, flexShrink: 0 }} />
+          )
+        )}
+
+        <div
+          onClick={onToggle ? () => { void handleToggleClick(); } : undefined}
+          title={onToggle ? (isDone ? "Merk som ikke ferdig" : "Merk som ferdig") : undefined}
+          style={{
+            width: 22, height: 22, borderRadius: "50%", flexShrink: 0,
+            border: `2px solid ${circleColor}`,
+            background: isDone && !toggling ? circleColor : "transparent",
+            display: "flex", alignItems: "center", justifyContent: "center",
+            cursor: onToggle ? (toggling ? "wait" : "pointer") : "default",
+            opacity: toggling ? 0.5 : 1,
+            transition: "opacity 0.15s",
+          }}
+        >
+          {isDone && !toggling && <span style={{ color: "#fff", fontSize: "0.7rem", fontWeight: 700 }}>✓</span>}
+        </div>
+
+        <span style={{
+          flex: 1, fontSize: depth > 0 ? "0.85rem" : "0.9rem",
+          textDecoration: isDone ? "line-through" : "none",
+          color: isDone ? "var(--bfc-base-c-3)" : "inherit",
+          overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
+        }}>
+          {task.title}
+        </span>
+
+        {depth === 0 && fagomrade ? (
+          <span style={{ fontSize: "0.7rem", fontWeight: 600, flexShrink: 0, padding: "2px 8px", borderRadius: 20, background: "#0078D418", color: "#0078D4", whiteSpace: "nowrap" }}>
+            {fagomrade}
+          </span>
+        ) : depth === 0 && task.labels && task.labels.length > 0 ? (
+          <div style={{ display: "flex", gap: "0.3rem", flexShrink: 0, flexWrap: "wrap", maxWidth: 200 }}>
+            {task.labels.map((label) => (
+              <span key={label} style={{ fontSize: "0.7rem", fontWeight: 600, padding: "2px 7px", borderRadius: 20, background: "#7950F218", color: "#7950F2", whiteSpace: "nowrap" }}>
+                {label}
+              </span>
+            ))}
+          </div>
+        ) : null}
+
+        {task.percentComplete > 0 && task.percentComplete < 100 && (
+          <div style={{ width: 60, height: 5, borderRadius: 3, background: "var(--bfc-base-dimmed)", overflow: "hidden", flexShrink: 0 }}>
+            <div style={{ width: `${task.percentComplete}%`, height: "100%", background: cfg.color, borderRadius: 3 }} />
+          </div>
+        )}
+
+        {(task.startDateTime || task.dueDateTime) && (
+          <span style={{ fontSize: "0.75rem", color: "var(--bfc-base-c-3)", flexShrink: 0, whiteSpace: "nowrap" }}>
+            {task.startDateTime && new Date(task.startDateTime).toLocaleDateString("nb-NO", { day: "numeric", month: "short" })}
+            {task.startDateTime && task.dueDateTime && " → "}
+            {task.dueDateTime && new Date(task.dueDateTime).toLocaleDateString("nb-NO", { day: "numeric", month: "short" })}
+          </span>
+        )}
+
+        <span style={{ fontSize: "0.72rem", fontWeight: 600, padding: "2px 8px", borderRadius: 20, background: cfg.bg, color: cfg.color, flexShrink: 0 }}>
+          {cfg.label}
+        </span>
       </div>
 
-      <span style={{
-        flex: 1, fontSize: "0.9rem",
-        textDecoration: isDone ? "line-through" : "none",
-        color: isDone ? "var(--bfc-base-c-3)" : "inherit",
-        overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
-      }}>
-        {task.title}
-      </span>
-
-      {/* Fagområde chip (hierarchical Premium) or labels (Basic Planner) */}
-      {fagomrade ? (
-        <span style={{
-          fontSize: "0.7rem", fontWeight: 600, flexShrink: 0,
-          padding: "2px 8px", borderRadius: 20,
-          background: "#0078D418", color: "#0078D4",
-          whiteSpace: "nowrap",
-        }}>
-          {fagomrade}
-        </span>
-      ) : task.labels && task.labels.length > 0 ? (
-        <div style={{ display: "flex", gap: "0.3rem", flexShrink: 0, flexWrap: "wrap", maxWidth: 200 }}>
-          {task.labels.map((label) => (
-            <span key={label} style={{
-              fontSize: "0.7rem", fontWeight: 600,
-              padding: "2px 7px", borderRadius: 20,
-              background: "#7950F218", color: "#7950F2",
-              whiteSpace: "nowrap",
-            }}>
-              {label}
-            </span>
+      {hasChildren && expanded && (
+        <div style={{ display: "grid", gap: "0.25rem", marginTop: "0.25rem" }}>
+          {children.map((child) => (
+            <PlannerTaskRow
+              key={child.id}
+              task={child}
+              childrenByParent={childrenByParent}
+              depth={depth + 1}
+              onToggle={onToggle}
+            />
           ))}
         </div>
-      ) : null}
-
-      {task.percentComplete > 0 && task.percentComplete < 100 && (
-        <div style={{ width: 60, height: 5, borderRadius: 3, background: "var(--bfc-base-dimmed)", overflow: "hidden", flexShrink: 0 }}>
-          <div style={{ width: `${task.percentComplete}%`, height: "100%", background: cfg.color, borderRadius: 3 }} />
-        </div>
       )}
-
-      {(task.startDateTime || task.dueDateTime) && (
-        <span style={{ fontSize: "0.75rem", color: "var(--bfc-base-c-3)", flexShrink: 0, whiteSpace: "nowrap" }}>
-          {task.startDateTime && new Date(task.startDateTime).toLocaleDateString("nb-NO", { day: "numeric", month: "short" })}
-          {task.startDateTime && task.dueDateTime && " → "}
-          {task.dueDateTime && new Date(task.dueDateTime).toLocaleDateString("nb-NO", { day: "numeric", month: "short" })}
-        </span>
-      )}
-
-      <span style={{ fontSize: "0.72rem", fontWeight: 600, padding: "2px 8px", borderRadius: 20, background: cfg.bg, color: cfg.color, flexShrink: 0 }}>
-        {cfg.label}
-      </span>
     </div>
   );
 }
