@@ -622,7 +622,7 @@ function PlannerView({ liste, srcCfg, account, data, loading, error, msalReady, 
 
       {loading && <div style={{ textAlign: "center", padding: "3rem", color: "var(--bfc-base-c-2)" }}>Henter oppgaver fra Planner…</div>}
 
-      {data && !loading && <FlatPlannerList data={data} onToggle={onToggleTask} />}
+      {data && !loading && <FlatPlannerList data={data} onToggle={data.source === "premium" ? undefined : onToggleTask} />}
     </div>
   );
 }

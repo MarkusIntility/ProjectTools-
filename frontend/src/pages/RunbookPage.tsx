@@ -1146,7 +1146,7 @@ function PlannerView({
         </div>
       )}
 
-      {data && !loading && <PlannerTaskList data={data} onToggleTask={onToggleTask} />}
+      {data && !loading && <PlannerTaskList data={data} onToggleTask={data.source === "premium" ? undefined : onToggleTask} />}
     </div>
   );
 }

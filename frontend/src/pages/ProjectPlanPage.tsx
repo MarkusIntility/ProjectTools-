@@ -902,7 +902,7 @@ function PlannerView({
       {data && !loading && (
         view === "gantt"
           ? <PlannerGanttView data={data} />
-          : <PlannerTaskGrid data={data} onToggleTask={onToggleTask} />
+          : <PlannerTaskGrid data={data} onToggleTask={data.source === "premium" ? undefined : onToggleTask} />
       )}
     </div>
   );
