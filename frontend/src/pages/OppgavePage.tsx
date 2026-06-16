@@ -119,7 +119,8 @@ export default function OppgavePage() {
     } : null);
     try {
       await togglePlannerTask(msalInstance, plannerAccount, plannerData, taskId, done);
-    } catch {
+    } catch (err) {
+      setPlannerError(err instanceof Error ? err.message : "Kunne ikke oppdatere oppgave i Planner");
       loadPlannerData(plannerAccount, liste.external_url);
     }
   }

@@ -149,8 +149,8 @@ export default function ProjectPlanPage() {
     } : null);
     try {
       await togglePlannerTask(msalInstance, plannerAccount, plannerData, taskId, done);
-    } catch {
-      // Revert to server state on failure
+    } catch (err) {
+      setPlannerError(err instanceof Error ? err.message : "Kunne ikke oppdatere oppgave i Planner");
       loadPlannerData(plannerAccount, plan.external_url);
     }
   }
