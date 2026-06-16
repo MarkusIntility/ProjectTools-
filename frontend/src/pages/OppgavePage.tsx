@@ -3,7 +3,7 @@ import { useParams, useNavigate } from "react-router-dom";
 import { Button, Input, Modal } from "@intility/bifrost-react";
 import { api, type OppgaveListe, type Oppgave, type Template } from "../api/client";
 import { isMsalConfigured, msalInstance, PLANNER_SCOPES } from "../auth/msalConfig";
-import { fetchPlannerData, parsePlanId, taskStatus, type PlannerData, type PlannerTask } from "../auth/plannerService";
+import { fetchPlannerData, parsePlanId, taskStatus, togglePlannerTask, type PlannerData, type PlannerTask } from "../auth/plannerService";
 import type { AccountInfo } from "@azure/msal-browser";
 
 // ─── Config ───────────────────────────────────────────────────────────────────
@@ -109,6 +109,19 @@ export default function OppgavePage() {
     Object.keys(sessionStorage).filter((k) => k.includes("interaction")).forEach((k) => sessionStorage.removeItem(k));
     sessionStorage.setItem("app.returnUrl", window.location.href);
     await msalInstance.loginRedirect({ scopes: PLANNER_SCOPES });
+  }
+
+  async function handleToggleTask(taskId: string, done: boolean): Promise<void> {
+    if (!plannerData || !plannerAccount || !liste || !liste.external_url) return;
+    setPlannerData((prev) => prev ? {
+      ...prev,
+      tasks: prev.tasks.map((t) => t.id === taskId ? { ...t, percentComplete: done ? 100 : 0 } : t),
+    } : null);
+    try {
+      await togglePlannerTask(msalInstance, plannerAccount, plannerData, taskId, done);
+    } catch {
+      loadPlannerData(plannerAccount, liste.external_url);
+    }
   }
 
   function openAdd() {
@@ -263,6 +276,7 @@ export default function OppgavePage() {
           msalReady={msalReady}
           onLogin={loginPlanner}
           onRefresh={() => { if (plannerAccount && liste.external_url) loadPlannerData(plannerAccount, liste.external_url); }}
+          onToggleTask={handleToggleTask}
         />
       )}
 
@@ -541,7 +555,7 @@ function OppgaveRow({ oppgave, onEdit, onDelete, onToggle }: {
 
 // ─── Planner view (flat list) ─────────────────────────────────────────────────
 
-function PlannerView({ liste, srcCfg, account, data, loading, error, msalReady, onLogin, onRefresh }: {
+function PlannerView({ liste, srcCfg, account, data, loading, error, msalReady, onLogin, onRefresh, onToggleTask }: {
   liste: OppgaveListe;
   srcCfg: { label: string; color: string };
   account: AccountInfo | null;
@@ -551,6 +565,7 @@ function PlannerView({ liste, srcCfg, account, data, loading, error, msalReady, 
   msalReady: boolean;
   onLogin: () => void;
   onRefresh: () => void;
+  onToggleTask: (taskId: string, done: boolean) => Promise<void>;
 }) {
   const planId = liste.external_url ? parsePlanId(liste.external_url) : null;
 
@@ -606,14 +621,14 @@ function PlannerView({ liste, srcCfg, account, data, loading, error, msalReady, 
 
       {loading && <div style={{ textAlign: "center", padding: "3rem", color: "var(--bfc-base-c-2)" }}>Henter oppgaver fra Planner…</div>}
 
-      {data && !loading && <FlatPlannerList data={data} />}
+      {data && !loading && <FlatPlannerList data={data} onToggle={onToggleTask} />}
     </div>
   );
 }
 
 // ─── Flat Planner task list ───────────────────────────────────────────────────
 
-function FlatPlannerList({ data }: { data: PlannerData }) {
+function FlatPlannerList({ data, onToggle }: { data: PlannerData; onToggle?: (taskId: string, done: boolean) => Promise<void> }) {
   const assigneeMap = data.assigneeMap ?? {};
   const [filter, setFilter] = useState<Filter>("all");
 
@@ -687,11 +702,17 @@ function FlatPlannerList({ data }: { data: PlannerData }) {
               padding: "0.65rem 1rem", borderRadius: 7,
               background: "var(--bfc-base-3)", border: "1px solid var(--bfc-base-dimmed)",
             }}>
-              <div style={{
-                width: 22, height: 22, borderRadius: "50%", flexShrink: 0,
-                border: `2px solid ${cfg.color}`, background: isDone ? cfg.color : "transparent",
-                display: "flex", alignItems: "center", justifyContent: "center",
-              }}>
+              <div
+                onClick={onToggle ? () => { void onToggle(task.id, !isDone); } : undefined}
+                title={onToggle ? (isDone ? "Merk som ikke ferdig" : "Merk som ferdig") : undefined}
+                style={{
+                  width: 22, height: 22, borderRadius: "50%", flexShrink: 0,
+                  border: `2px solid ${cfg.color}`, background: isDone ? cfg.color : "transparent",
+                  display: "flex", alignItems: "center", justifyContent: "center",
+                  cursor: onToggle ? "pointer" : "default",
+                  transition: "opacity 0.15s",
+                }}
+              >
                 {isDone && <span style={{ color: "#fff", fontSize: "0.7rem", fontWeight: 700 }}>✓</span>}
               </div>
               <span style={{

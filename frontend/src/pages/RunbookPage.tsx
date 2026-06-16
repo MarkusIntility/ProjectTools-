@@ -3,7 +3,7 @@ import { useParams, useNavigate } from "react-router-dom";
 import { Button, Input, Modal } from "@intility/bifrost-react";
 import { api, type Runbook, type RunbookActivity, type Template } from "../api/client";
 import { isMsalConfigured, msalInstance, PLANNER_SCOPES } from "../auth/msalConfig";
-import { fetchPlannerData, parsePlanId, taskStatus, type PlannerData, type PlannerTask } from "../auth/plannerService";
+import { fetchPlannerData, parsePlanId, taskStatus, togglePlannerTask, type PlannerData, type PlannerTask } from "../auth/plannerService";
 import { probeOnboardApi } from "../auth/onboardService";
 import type { AccountInfo } from "@azure/msal-browser";
 
@@ -151,6 +151,19 @@ export default function RunbookPage() {
   function refreshPlanner() {
     if (!plannerAccount || !runbook?.external_url) return;
     loadPlannerData(plannerAccount, runbook.external_url);
+  }
+
+  async function handleToggleTask(taskId: string, done: boolean): Promise<void> {
+    if (!plannerData || !plannerAccount || !runbook || !runbook.external_url) return;
+    setPlannerData((prev) => prev ? {
+      ...prev,
+      tasks: prev.tasks.map((t) => t.id === taskId ? { ...t, percentComplete: done ? 100 : 0 } : t),
+    } : null);
+    try {
+      await togglePlannerTask(msalInstance, plannerAccount, plannerData, taskId, done);
+    } catch {
+      loadPlannerData(plannerAccount, runbook.external_url);
+    }
   }
 
   function openAdd(defaultPhase?: string) {
@@ -360,6 +373,7 @@ export default function RunbookPage() {
               error={plannerError}
               onLogin={loginPlanner}
               onRefresh={refreshPlanner}
+              onToggleTask={handleToggleTask}
             />
           )}
 
@@ -1040,7 +1054,7 @@ function ExternalLinkCard({ runbook, srcCfg }: { runbook: Runbook; srcCfg: { lab
 // ─── Planner integration view ─────────────────────────────────────────────────
 
 function PlannerView({
-  runbook, srcCfg, isMsalConfigured: configured, msalReady, account, data, loading, error, onLogin, onRefresh,
+  runbook, srcCfg, isMsalConfigured: configured, msalReady, account, data, loading, error, onLogin, onRefresh, onToggleTask,
 }: {
   runbook: Runbook;
   srcCfg: { label: string; color: string };
@@ -1052,6 +1066,7 @@ function PlannerView({
   error: string | null;
   onLogin: () => void;
   onRefresh: () => void;
+  onToggleTask: (taskId: string, done: boolean) => Promise<void>;
 }) {
   const planId = runbook.external_url ? parsePlanId(runbook.external_url) : null;
 
@@ -1130,14 +1145,14 @@ function PlannerView({
         </div>
       )}
 
-      {data && !loading && <PlannerTaskList data={data} />}
+      {data && !loading && <PlannerTaskList data={data} onToggleTask={onToggleTask} />}
     </div>
   );
 }
 
 // ─── Planner task list ────────────────────────────────────────────────────────
 
-function PlannerTaskList({ data }: { data: PlannerData }) {
+function PlannerTaskList({ data, onToggleTask }: { data: PlannerData; onToggleTask?: (taskId: string, done: boolean) => Promise<void> }) {
   const [filter, setFilter] = useState<Filter>("all");
   const [fagFilter, setFagFilter] = useState<string | null>(null);
 
@@ -1300,7 +1315,7 @@ function PlannerTaskList({ data }: { data: PlannerData }) {
                     </div>
                   </div>
                   <div style={{ display: "grid", gap: "0.35rem" }}>
-                    {visibleL2.map((t) => <PlannerTaskRow key={t.id} task={t} fagomrade={getFagomrade(t)} />)}
+                    {visibleL2.map((t) => <PlannerTaskRow key={t.id} task={t} fagomrade={getFagomrade(t)} onToggle={onToggleTask} />)}
                   </div>
                 </div>
               );
@@ -1315,7 +1330,7 @@ function PlannerTaskList({ data }: { data: PlannerData }) {
                 <div>
                   <h3 className="bf-h4" style={{ margin: "0 0 0.5rem", color: "var(--bfc-base-c-2)" }}>Uten fase</h3>
                   <div style={{ display: "grid", gap: "0.35rem" }}>
-                    {visible.map((t) => <PlannerTaskRow key={t.id} task={t} fagomrade={getFagomrade(t)} />)}
+                    {visible.map((t) => <PlannerTaskRow key={t.id} task={t} fagomrade={getFagomrade(t)} onToggle={onToggleTask} />)}
                   </div>
                 </div>
               );
@@ -1343,7 +1358,7 @@ function PlannerTaskList({ data }: { data: PlannerData }) {
                     </div>
                   </div>
                   <div style={{ display: "grid", gap: "0.35rem" }}>
-                    {tasks.map((task) => <PlannerTaskRow key={task.id} task={task} />)}
+                    {tasks.map((task) => <PlannerTaskRow key={task.id} task={task} onToggle={onToggleTask} />)}
                   </div>
                 </div>
               );
@@ -1355,11 +1370,23 @@ function PlannerTaskList({ data }: { data: PlannerData }) {
   );
 }
 
-function PlannerTaskRow({ task, fagomrade }: { task: PlannerTask; fagomrade?: string }) {
+function PlannerTaskRow({ task, fagomrade, onToggle }: { task: PlannerTask; fagomrade?: string; onToggle?: (taskId: string, done: boolean) => Promise<void> }) {
   const [hovered, setHovered] = useState(false);
+  const [toggling, setToggling] = useState(false);
   const status = taskStatus(task.percentComplete);
   const cfg = STATUS_CONFIG[status];
   const isDone = status === "done";
+  const circleColor = toggling ? "#ADB5BD" : cfg.color;
+
+  async function handleToggleClick() {
+    if (!onToggle || toggling) return;
+    setToggling(true);
+    try {
+      await onToggle(task.id, !isDone);
+    } finally {
+      setToggling(false);
+    }
+  }
 
   return (
     <div
@@ -1373,13 +1400,20 @@ function PlannerTaskRow({ task, fagomrade }: { task: PlannerTask; fagomrade?: st
         transition: "box-shadow 0.15s",
       }}
     >
-      <div style={{
-        width: 22, height: 22, borderRadius: "50%", flexShrink: 0,
-        border: `2px solid ${cfg.color}`,
-        background: isDone ? cfg.color : "transparent",
-        display: "flex", alignItems: "center", justifyContent: "center",
-      }}>
-        {isDone && <span style={{ color: "#fff", fontSize: "0.7rem", fontWeight: 700 }}>✓</span>}
+      <div
+        onClick={onToggle ? () => { void handleToggleClick(); } : undefined}
+        title={onToggle ? (isDone ? "Merk som ikke ferdig" : "Merk som ferdig") : undefined}
+        style={{
+          width: 22, height: 22, borderRadius: "50%", flexShrink: 0,
+          border: `2px solid ${circleColor}`,
+          background: isDone && !toggling ? circleColor : "transparent",
+          display: "flex", alignItems: "center", justifyContent: "center",
+          cursor: onToggle ? (toggling ? "wait" : "pointer") : "default",
+          opacity: toggling ? 0.5 : 1,
+          transition: "opacity 0.15s",
+        }}
+      >
+        {isDone && !toggling && <span style={{ color: "#fff", fontSize: "0.7rem", fontWeight: 700 }}>✓</span>}
       </div>
 
       <span style={{
