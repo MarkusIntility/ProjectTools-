@@ -29,6 +29,9 @@ export interface PlannerData {
   tasks: PlannerTask[];
   categoryDescriptions?: Record<string, string | null>;
   assigneeMap?: Record<string, string>; // userId → displayName
+  source: "basic" | "premium";
+  premiumApiUrl?: string;  // set when source === "premium"
+  premiumDvScope?: string; // Dataverse OAuth scope, set when source === "premium"
 }
 
 // ─── Dataverse types ──────────────────────────────────────────────────────────
@@ -290,7 +293,7 @@ async function fetchPlannerPremiumData(
       };
     });
 
-    return { buckets, tasks };
+    return { buckets, tasks, source: "premium" as const, premiumApiUrl: apiUrl, premiumDvScope: dvScope };
   }
 
   throw new Error("PREMIUM_PLAN: Planner Premium-planen ble ikke funnet i noen Dataverse-miljøer. Sjekk at du har tilgang til riktig Power Platform-miljø.");
@@ -329,7 +332,7 @@ export async function fetchPlannerData(
         .filter((name): name is string => Boolean(name)),
     }));
     const assigneeMap = await resolveAssignees(token, tasksData.value);
-    return { buckets: bucketsData.value, tasks, categoryDescriptions: catDesc, assigneeMap };
+    return { buckets: bucketsData.value, tasks, categoryDescriptions: catDesc, assigneeMap, source: "basic" as const };
   }
 
   if (v1Check.status === 404) {
@@ -353,7 +356,7 @@ export async function fetchPlannerData(
           .filter((name): name is string => Boolean(name)),
       }));
       const assigneeMap = await resolveAssignees(token, tasksData.value);
-      return { buckets: bucketsData.value, tasks, categoryDescriptions: catDesc, assigneeMap };
+      return { buckets: bucketsData.value, tasks, categoryDescriptions: catDesc, assigneeMap, source: "basic" as const };
     }
 
     // Both Graph versions 404 — Premium plan stored in Dataverse
@@ -362,6 +365,59 @@ export async function fetchPlannerData(
   }
 
   throw new Error(`Graph API feil (${v1Check.status}): ${await v1Check.text()}`);
+}
+
+// ─── Toggle task complete ─────────────────────────────────────────────────────
+
+export async function togglePlannerTask(
+  msal: IPublicClientApplication,
+  account: AccountInfo,
+  data: PlannerData,
+  taskId: string,
+  done: boolean
+): Promise<void> {
+  if (data.source === "premium") {
+    if (!data.premiumApiUrl || !data.premiumDvScope) throw new Error("Mangler Dataverse-konfigurasjon.");
+    const dvToken = await acquireToken(msal, account, [data.premiumDvScope]);
+    const res = await fetch(
+      `${data.premiumApiUrl.replace(/\/$/, "")}/api/data/v9.2/msdyn_projecttasks(${taskId})`,
+      {
+        method: "PATCH",
+        headers: {
+          Authorization: `Bearer ${dvToken}`,
+          "Content-Type": "application/json",
+          "OData-MaxVersion": "4.0",
+          "OData-Version": "4.0",
+        },
+        body: JSON.stringify({ msdyn_progress: done ? 1.0 : 0.0 }),
+      }
+    );
+    if (!res.ok && res.status !== 204) {
+      const err = await res.text();
+      throw new Error(`Dataverse-feil (${res.status}): ${err.slice(0, 200)}`);
+    }
+  } else {
+    const token = await acquireToken(msal, account, PLANNER_SCOPES);
+    // GET the current task to retrieve the required ETag
+    const getRes = await fetch(`https://graph.microsoft.com/v1.0/planner/tasks/${taskId}`, {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    if (!getRes.ok) throw new Error(`Kunne ikke hente oppgave (${getRes.status})`);
+    const etag = getRes.headers.get("ETag") ?? "";
+    const patchRes = await fetch(`https://graph.microsoft.com/v1.0/planner/tasks/${taskId}`, {
+      method: "PATCH",
+      headers: {
+        Authorization: `Bearer ${token}`,
+        "Content-Type": "application/json",
+        "If-Match": etag,
+      },
+      body: JSON.stringify({ percentComplete: done ? 100 : 0 }),
+    });
+    if (!patchRes.ok) {
+      const err = await patchRes.text();
+      throw new Error(`Planner-feil (${patchRes.status}): ${err.slice(0, 200)}`);
+    }
+  }
 }
 
 // ─── Utilities ────────────────────────────────────────────────────────────────

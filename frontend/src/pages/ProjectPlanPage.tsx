@@ -3,7 +3,7 @@ import { useParams, useNavigate } from "react-router-dom";
 import { Button, Input, Modal } from "@intility/bifrost-react";
 import { api, type ProjectPlan, type ProjectPlanTask, type Template } from "../api/client";
 import { isMsalConfigured, msalInstance, PLANNER_SCOPES } from "../auth/msalConfig";
-import { fetchPlannerData, parsePlanId, type PlannerData, type PlannerTask } from "../auth/plannerService";
+import { fetchPlannerData, parsePlanId, togglePlannerTask, type PlannerData, type PlannerTask } from "../auth/plannerService";
 import type { AccountInfo } from "@azure/msal-browser";
 
 // ─── Config ───────────────────────────────────────────────────────────────────
@@ -138,6 +138,21 @@ export default function ProjectPlanPage() {
   function refreshPlanner() {
     if (!plannerAccount || !plan?.external_url) return;
     loadPlannerData(plannerAccount, plan.external_url);
+  }
+
+  async function handleToggleTask(taskId: string, done: boolean): Promise<void> {
+    if (!plannerData || !plannerAccount || !plan || !plan.external_url) return;
+    // Optimistic update — reflects immediately in the UI
+    setPlannerData((prev) => prev ? {
+      ...prev,
+      tasks: prev.tasks.map((t) => t.id === taskId ? { ...t, percentComplete: done ? 100 : 0 } : t),
+    } : null);
+    try {
+      await togglePlannerTask(msalInstance, plannerAccount, plannerData, taskId, done);
+    } catch {
+      // Revert to server state on failure
+      loadPlannerData(plannerAccount, plan.external_url);
+    }
   }
 
   function openAdd(defaultBucket?: string) {
@@ -318,6 +333,7 @@ export default function ProjectPlanPage() {
           error={plannerError}
           onLogin={loginPlanner}
           onRefresh={refreshPlanner}
+          onToggleTask={handleToggleTask}
           view={view}
         />
       )}
@@ -797,7 +813,7 @@ function ExternalLinkCard({ plan, srcCfg }: { plan: ProjectPlan; srcCfg: { label
 // ─── Planner view ─────────────────────────────────────────────────────────────
 
 function PlannerView({
-  plan, srcCfg, isMsalConfigured: configured, msalReady, account, data, loading, error, onLogin, onRefresh, view,
+  plan, srcCfg, isMsalConfigured: configured, msalReady, account, data, loading, error, onLogin, onRefresh, onToggleTask, view,
 }: {
   plan: ProjectPlan;
   srcCfg: { label: string; color: string };
@@ -809,6 +825,7 @@ function PlannerView({
   error: string | null;
   onLogin: () => void;
   onRefresh: () => void;
+  onToggleTask: (taskId: string, done: boolean) => Promise<void>;
   view: "list" | "gantt";
 }) {
   const planId = plan.external_url ? parsePlanId(plan.external_url) : null;
@@ -885,7 +902,7 @@ function PlannerView({
       {data && !loading && (
         view === "gantt"
           ? <PlannerGanttView data={data} />
-          : <PlannerTaskGrid data={data} />
+          : <PlannerTaskGrid data={data} onToggleTask={onToggleTask} />
       )}
     </div>
   );
@@ -893,7 +910,7 @@ function PlannerView({
 
 // ─── Planner task grid ────────────────────────────────────────────────────────
 
-function PlannerTaskGrid({ data }: { data: PlannerData }) {
+function PlannerTaskGrid({ data, onToggleTask }: { data: PlannerData; onToggleTask?: (taskId: string, done: boolean) => Promise<void> }) {
   const [filter, setFilter] = useState<Filter>("all");
   const [fagFilter, setFagFilter] = useState<string | null>(null);
 
@@ -1080,7 +1097,7 @@ function PlannerTaskGrid({ data }: { data: PlannerData }) {
                     </div>
                   </div>
                   <div style={{ display: "grid", gap: "0.35rem" }}>
-                    {visibleL2.map((t) => <PlannerTaskRow key={t.id} task={t} fagomrade={getFagomrade(t)} childrenByParent={childrenByParent} />)}
+                    {visibleL2.map((t) => <PlannerTaskRow key={t.id} task={t} fagomrade={getFagomrade(t)} childrenByParent={childrenByParent} onToggle={onToggleTask} />)}
                   </div>
                 </div>
               );
@@ -1094,7 +1111,7 @@ function PlannerTaskGrid({ data }: { data: PlannerData }) {
                     <h3 className="bf-h4" style={{ margin: 0, flex: 1, color: "var(--bfc-base-c-2)" }}>Uten fase</h3>
                   </div>
                   <div style={{ display: "grid", gap: "0.35rem" }}>
-                    {visible.map((t) => <PlannerTaskRow key={t.id} task={t} fagomrade={getFagomrade(t)} childrenByParent={childrenByParent} />)}
+                    {visible.map((t) => <PlannerTaskRow key={t.id} task={t} fagomrade={getFagomrade(t)} childrenByParent={childrenByParent} onToggle={onToggleTask} />)}
                   </div>
                 </div>
               );
@@ -1122,7 +1139,7 @@ function PlannerTaskGrid({ data }: { data: PlannerData }) {
                     </div>
                   </div>
                   <div style={{ display: "grid", gap: "0.35rem" }}>
-                    {tasks.map((task) => <PlannerTaskRow key={task.id} task={task} />)}
+                    {tasks.map((task) => <PlannerTaskRow key={task.id} task={task} onToggle={onToggleTask} />)}
                   </div>
                 </div>
               );
@@ -1139,17 +1156,30 @@ function PlannerTaskRow({
   fagomrade,
   childrenByParent,
   depth = 0,
+  onToggle,
 }: {
   task: PlannerTask;
   fagomrade?: string;
   childrenByParent?: Record<string, PlannerTask[]>;
   depth?: number;
+  onToggle?: (taskId: string, done: boolean) => Promise<void>;
 }) {
   const [hovered, setHovered] = useState(false);
   const [expanded, setExpanded] = useState(false);
+  const [toggling, setToggling] = useState(false);
   const pct = task.percentComplete;
   const isDone = pct === 100;
-  const color = isDone ? "#2F9E44" : pct > 0 ? "#1971C2" : "#868E96";
+  const color = toggling ? "#ADB5BD" : isDone ? "#2F9E44" : pct > 0 ? "#1971C2" : "#868E96";
+
+  async function handleToggleClick() {
+    if (!onToggle || toggling) return;
+    setToggling(true);
+    try {
+      await onToggle(task.id, !isDone);
+    } finally {
+      setToggling(false);
+    }
+  }
 
   const children = childrenByParent?.[task.id] ?? [];
   const hasChildren = children.length > 0;
@@ -1188,13 +1218,20 @@ function PlannerTaskRow({
           )
         )}
 
-        <div style={{
-          width: 24, height: 24, borderRadius: "50%", flexShrink: 0,
-          border: `2px solid ${color}`, background: isDone ? color : "transparent",
-          display: "flex", alignItems: "center", justifyContent: "center",
-          fontSize: "0.65rem", fontWeight: 700, color: isDone ? "#fff" : pct > 0 ? color : "transparent",
-        }}>
-          {isDone ? "✓" : pct > 0 ? `${pct}` : ""}
+        <div
+          onClick={onToggle ? () => { void handleToggleClick(); } : undefined}
+          title={onToggle ? (isDone ? "Merk som ikke ferdig" : "Merk som ferdig") : undefined}
+          style={{
+            width: 24, height: 24, borderRadius: "50%", flexShrink: 0,
+            border: `2px solid ${color}`, background: isDone ? color : "transparent",
+            display: "flex", alignItems: "center", justifyContent: "center",
+            fontSize: "0.65rem", fontWeight: 700, color: isDone ? "#fff" : pct > 0 ? color : "transparent",
+            cursor: onToggle ? (toggling ? "wait" : "pointer") : "default",
+            opacity: toggling ? 0.5 : 1,
+            transition: "opacity 0.15s, border-color 0.15s",
+          }}
+        >
+          {toggling ? "" : isDone ? "✓" : pct > 0 ? `${pct}` : ""}
         </div>
 
         <span style={{
