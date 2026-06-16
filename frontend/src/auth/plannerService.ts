@@ -22,6 +22,7 @@ export interface PlannerTask {
   outlineLevel?: number;   // 1 = fase, 2 = leveranse, 3 = lokasjon/pulje
   parentTaskId?: string | null;
   durationMinutes?: number | null; // 0 = explicit milestone in Planner Premium; null = not fetched (Basic Planner)
+  effort?: number | null;          // msdyn_effort (hours); null = not fetched (Basic Planner)
 }
 
 export interface PlannerData {
@@ -55,6 +56,7 @@ interface DataverseTask {
   "_msdyn_parenttask_value"?: string | null;
   msdyn_outlinelevel?: number;
   msdyn_duration?: number | null; // in minutes; 0 = milestone
+  msdyn_effort?: number | null;   // planned effort in hours
 }
 
 
@@ -180,6 +182,7 @@ async function fetchPlannerPremiumData(
       "msdyn_scheduledstart",
       "msdyn_scheduledend",
       "msdyn_duration",
+      "msdyn_effort",
       "_msdyn_projectbucket_value",
       "_msdyn_resourcecategory_value",
       "_msdyn_projectsprint_value",
@@ -290,6 +293,7 @@ async function fetchPlannerPremiumData(
         outlineLevel: t.msdyn_outlinelevel,
         parentTaskId: t["_msdyn_parenttask_value"] ?? null,
         durationMinutes: t.msdyn_duration ?? null,
+        effort: t.msdyn_effort ?? null,
       };
     });
 
@@ -379,8 +383,15 @@ export async function togglePlannerTask(
   if (data.source === "premium") {
     if (!data.premiumApiUrl || !data.premiumDvScope) throw new Error("Mangler Dataverse-konfigurasjon.");
     const dvToken = await acquireToken(msal, account, [data.premiumDvScope]);
+    const apiBase = data.premiumApiUrl.replace(/\/$/, "");
+
+    // msdyn_progress is a calculated field — update via msdyn_effortcompleted instead.
+    // Set effortcompleted = effort (done) or 0 (not done); Dataverse recalculates progress.
+    const task = data.tasks.find((t) => t.id === taskId);
+    const effort = task?.effort ?? 8; // fallback to 8h if not fetched
+
     const res = await fetch(
-      `${data.premiumApiUrl.replace(/\/$/, "")}/api/data/v9.2/msdyn_projecttasks(${taskId})`,
+      `${apiBase}/api/data/v9.2/msdyn_projecttasks(${taskId})`,
       {
         method: "PATCH",
         headers: {
@@ -389,11 +400,12 @@ export async function togglePlannerTask(
           "OData-MaxVersion": "4.0",
           "OData-Version": "4.0",
         },
-        body: JSON.stringify({ msdyn_progress: done ? 1.0 : 0.0 }),
+        body: JSON.stringify({ msdyn_effortcompleted: done ? Math.max(effort, 0.001) : 0 }),
       }
     );
     if (!res.ok && res.status !== 204) {
       const err = await res.text();
+      console.error("[Planner] Toggle PATCH error:", err);
       throw new Error(`Dataverse-feil (${res.status}): ${err.slice(0, 200)}`);
     }
   } else {
