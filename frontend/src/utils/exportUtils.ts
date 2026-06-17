@@ -1,5 +1,5 @@
-import jsPDF from "jspdf";
-import autoTable from "jspdf-autotable";
+import { jsPDF } from "jspdf";
+import { autoTable } from "jspdf-autotable";
 import * as XLSX from "xlsx";
 import type {
   Project,
@@ -133,9 +133,22 @@ function addFooters(doc: jsPDF) {
   }
 }
 
+function savePdf(doc: jsPDF, filename: string) {
+  const blob = doc.output("blob");
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  setTimeout(() => URL.revokeObjectURL(url), 10000);
+}
+
 // ── Risk Matrix ───────────────────────────────────────────────────────────────
 
 export async function exportRiskMatrixPdf(matrix: RiskMatrix, project: Project) {
+  try {
   const doc = new jsPDF({ orientation: "landscape", unit: "mm", format: "a4" });
   const startY = await addPdfHeader(doc, {
     projectName: project.name,
@@ -173,7 +186,8 @@ export async function exportRiskMatrixPdf(matrix: RiskMatrix, project: Project) 
   });
 
   addFooters(doc);
-  doc.save(`${safeName(project.name)}_${safeName(matrix.title)}_risikomatrise.pdf`);
+  savePdf(doc, `${safeName(project.name)}_${safeName(matrix.title)}_risikomatrise.pdf`);
+  } catch (err) { console.error("[exportRiskMatrixPdf]", err); throw err; }
 }
 
 export function exportRiskMatrixExcel(matrix: RiskMatrix, project: Project) {
@@ -201,6 +215,7 @@ export async function exportProjectPlanPdf(
   project: Project,
   plannerData: PlannerData | null
 ) {
+  try {
   const doc = new jsPDF({ orientation: "landscape", unit: "mm", format: "a4" });
   const startY = await addPdfHeader(doc, {
     projectName: project.name,
@@ -247,7 +262,8 @@ export async function exportProjectPlanPdf(
   }
 
   addFooters(doc);
-  doc.save(`${safeName(project.name)}_${safeName(plan.title)}_prosjektplan.pdf`);
+  savePdf(doc, `${safeName(project.name)}_${safeName(plan.title)}_prosjektplan.pdf`);
+  } catch (err) { console.error("[exportProjectPlanPdf]", err); throw err; }
 }
 
 export function exportProjectPlanExcel(
@@ -296,6 +312,7 @@ export async function exportOppgavePdf(
   project: Project,
   plannerData: PlannerData | null
 ) {
+  try {
   const doc = new jsPDF({ orientation: "portrait", unit: "mm", format: "a4" });
   const startY = await addPdfHeader(doc, {
     projectName: project.name,
@@ -306,17 +323,18 @@ export async function exportOppgavePdf(
   if (liste.source === "own") {
     autoTable(doc, {
       startY,
-      head: [["Oppgave", "Ansvarlig", "Forfallsdato", "Status"]],
+      head: [["Oppgave", "Ansvarlig", "Forfallsdato", "Status", "Beskrivelse"]],
       body: liste.oppgaver.map((o) => [
         o.name,
         o.responsible ?? "–",
         fmtDate(o.due_date),
         OPPGAVE_STATUS[o.status] ?? o.status,
+        o.description ?? "–",
       ]),
-      styles: { fontSize: 9, cellPadding: 2 },
+      styles: { fontSize: 8.5, cellPadding: 2 },
       headStyles: { fillColor: NAVY, textColor: HEAD_TEXT, fontStyle: "bold" },
       alternateRowStyles: { fillColor: ALT_ROW },
-      columnStyles: { 0: { cellWidth: "auto" }, 1: { cellWidth: 40 }, 2: { cellWidth: 32 }, 3: { cellWidth: 28 } },
+      columnStyles: { 0: { cellWidth: 42 }, 1: { cellWidth: 35 }, 2: { cellWidth: 28 }, 3: { cellWidth: 24 }, 4: { cellWidth: "auto" } },
     });
   } else if (plannerData) {
     autoTable(doc, {
@@ -336,7 +354,8 @@ export async function exportOppgavePdf(
   }
 
   addFooters(doc);
-  doc.save(`${safeName(project.name)}_${safeName(liste.title)}_oppgaver.pdf`);
+  savePdf(doc, `${safeName(project.name)}_${safeName(liste.title)}_oppgaver.pdf`);
+  } catch (err) { console.error("[exportOppgavePdf]", err); throw err; }
 }
 
 export function exportOppgaveExcel(
@@ -349,9 +368,9 @@ export function exportOppgaveExcel(
 
   if (liste.source === "own") {
     rows = [
-      ["Oppgave", "Ansvarlig", "Forfallsdato", "Status"],
+      ["Oppgave", "Ansvarlig", "Forfallsdato", "Status", "Beskrivelse"],
       ...liste.oppgaver.map((o) => [
-        o.name, o.responsible ?? "", fmtDate(o.due_date), OPPGAVE_STATUS[o.status] ?? o.status,
+        o.name, o.responsible ?? "", fmtDate(o.due_date), OPPGAVE_STATUS[o.status] ?? o.status, o.description ?? "",
       ]),
     ];
   } else if (plannerData) {
@@ -366,7 +385,7 @@ export function exportOppgaveExcel(
   }
 
   const ws = XLSX.utils.aoa_to_sheet(rows);
-  ws["!cols"] = [45, 25, 18, 18].map((wch) => ({ wch }));
+  ws["!cols"] = [42, 22, 16, 16, 40].map((wch) => ({ wch }));
   XLSX.utils.book_append_sheet(wb, ws, "Oppgaver");
   XLSX.writeFile(wb, `${safeName(project.name)}_${safeName(liste.title)}_oppgaver.xlsx`);
 }
@@ -385,6 +404,7 @@ export async function exportRunbookPdf(
   project: Project,
   plannerData: PlannerData | null
 ) {
+  try {
   const doc = new jsPDF({ orientation: "landscape", unit: "mm", format: "a4" });
   const startY = await addPdfHeader(doc, {
     projectName: project.name,
@@ -426,7 +446,8 @@ export async function exportRunbookPdf(
   }
 
   addFooters(doc);
-  doc.save(`${safeName(project.name)}_${safeName(runbook.title)}_runbook.pdf`);
+  savePdf(doc, `${safeName(project.name)}_${safeName(runbook.title)}_runbook.pdf`);
+  } catch (err) { console.error("[exportRunbookPdf]", err); throw err; }
 }
 
 export function exportRunbookExcel(
@@ -465,6 +486,7 @@ export function exportRunbookExcel(
 // ── Meeting Plan ──────────────────────────────────────────────────────────────
 
 export async function exportMeetingPlanPdf(plan: MeetingPlan, project: Project) {
+  try {
   const doc = new jsPDF({ orientation: "portrait", unit: "mm", format: "a4" });
   const startY = await addPdfHeader(doc, {
     projectName: project.name,
@@ -487,7 +509,8 @@ export async function exportMeetingPlanPdf(plan: MeetingPlan, project: Project) 
   });
 
   addFooters(doc);
-  doc.save(`${safeName(project.name)}_${safeName(plan.title)}_møteplan.pdf`);
+  savePdf(doc, `${safeName(project.name)}_${safeName(plan.title)}_møteplan.pdf`);
+  } catch (err) { console.error("[exportMeetingPlanPdf]", err); throw err; }
 }
 
 export function exportMeetingPlanExcel(plan: MeetingPlan, project: Project) {
@@ -504,6 +527,7 @@ export function exportMeetingPlanExcel(plan: MeetingPlan, project: Project) {
 // ── Communication Plan ────────────────────────────────────────────────────────
 
 export async function exportCommPlanPdf(plan: CommunicationPlan, project: Project) {
+  try {
   const doc = new jsPDF({ orientation: "landscape", unit: "mm", format: "a4" });
   const startY = await addPdfHeader(doc, {
     projectName: project.name,
@@ -527,7 +551,8 @@ export async function exportCommPlanPdf(plan: CommunicationPlan, project: Projec
   });
 
   addFooters(doc);
-  doc.save(`${safeName(project.name)}_${safeName(plan.title)}_kommunikasjonsplan.pdf`);
+  savePdf(doc, `${safeName(project.name)}_${safeName(plan.title)}_kommunikasjonsplan.pdf`);
+  } catch (err) { console.error("[exportCommPlanPdf]", err); throw err; }
 }
 
 export function exportCommPlanExcel(plan: CommunicationPlan, project: Project) {
@@ -568,6 +593,7 @@ function riskLevelLabel(score: number): string {
 }
 
 export async function exportDashboardPdf(data: DashboardExportData) {
+  try {
   const doc = new jsPDF({ orientation: "portrait", unit: "mm", format: "a4" });
   const W = doc.internal.pageSize.getWidth();
 
@@ -673,5 +699,6 @@ export async function exportDashboardPdf(data: DashboardExportData) {
   }
 
   addFooters(doc);
-  doc.save(`${safeName(data.project.name)}_statusrapport.pdf`);
+  savePdf(doc, `${safeName(data.project.name)}_statusrapport.pdf`);
+  } catch (err) { console.error("[exportDashboardPdf]", err); throw err; }
 }
