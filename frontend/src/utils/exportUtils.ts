@@ -77,9 +77,18 @@ async function addPdfHeader(doc: jsPDF, props: PdfHeaderProps): Promise<number> 
   doc.rect(0, 0, W, STRIP_H, "F");
 
   const logo = await loadLogo();
+  let logoDrawn = false;
   if (logo) {
-    doc.addImage(logo, "PNG", 10, (STRIP_H - 14) / 2, 50, 14);
-  } else {
+    try {
+      const fmtMatch = /^data:image\/(\w+);/.exec(logo);
+      const fmt = fmtMatch ? fmtMatch[1].toUpperCase().replace("JPG", "JPEG") : "PNG";
+      doc.addImage(logo, fmt, 10, (STRIP_H - 14) / 2, 50, 14);
+      logoDrawn = true;
+    } catch {
+      // fall through to text fallback
+    }
+  }
+  if (!logoDrawn) {
     doc.setFontSize(17);
     doc.setFont("helvetica", "bold");
     doc.setTextColor(...YELLOW);
