@@ -45,20 +45,13 @@ function fmtDateTime(iso: string | null | undefined): string {
   });
 }
 
-async function loadLogo(): Promise<string | null> {
-  try {
-    const res = await fetch("/intility-logo.png");
-    if (!res.ok) return null;
-    const blob = await res.blob();
-    return new Promise<string>((resolve, reject) => {
-      const reader = new FileReader();
-      reader.onloadend = () => resolve(reader.result as string);
-      reader.onerror = reject;
-      reader.readAsDataURL(blob);
-    });
-  } catch {
-    return null;
-  }
+async function loadLogo(): Promise<HTMLImageElement | null> {
+  return new Promise((resolve) => {
+    const img = new Image();
+    img.onload = () => resolve(img);
+    img.onerror = () => resolve(null);
+    img.src = "/intility-logo.png";
+  });
 }
 
 // ── PDF header ────────────────────────────────────────────────────────────────
@@ -80,9 +73,7 @@ async function addPdfHeader(doc: jsPDF, props: PdfHeaderProps): Promise<number> 
   let logoDrawn = false;
   if (logo) {
     try {
-      const fmtMatch = /^data:image\/(\w+);/.exec(logo);
-      const fmt = fmtMatch ? fmtMatch[1].toUpperCase().replace("JPG", "JPEG") : "PNG";
-      doc.addImage(logo, fmt, 10, (STRIP_H - 14) / 2, 50, 14);
+      doc.addImage(logo, "JPEG", 10, (STRIP_H - 14) / 2, 50, 14);
       logoDrawn = true;
     } catch {
       // fall through to text fallback
