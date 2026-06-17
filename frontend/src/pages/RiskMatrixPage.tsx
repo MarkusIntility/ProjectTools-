@@ -1,7 +1,8 @@
 import { useEffect, useRef, useState } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { Button, Input, Modal } from "@intility/bifrost-react";
-import { api, type RiskMatrix, type RiskItem, type Template } from "../api/client";
+import { api, type Project, type RiskMatrix, type RiskItem, type Template } from "../api/client";
+import { exportRiskMatrixPdf, exportRiskMatrixExcel } from "../utils/exportUtils";
 
 const RISK_COLORS: Record<string, string> = {
   low: "#2F9E44",
@@ -75,6 +76,7 @@ export default function RiskMatrixPage() {
   const { projectId, matrixId } = useParams<{ projectId: string; matrixId: string }>();
   const navigate = useNavigate();
   const [matrix, setMatrix] = useState<RiskMatrix | null>(null);
+  const [project, setProject] = useState<Project | null>(null);
   const [showForm, setShowForm] = useState(false);
   const [form, setForm] = useState<RiskForm>(emptyRisk);
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -103,6 +105,7 @@ export default function RiskMatrixPage() {
   useEffect(() => {
     if (projectId && matrixId) {
       api.riskMatrices.get(projectId, matrixId).then(setMatrix);
+      api.projects.get(projectId).then(setProject);
     }
   }, [projectId, matrixId]);
 
@@ -240,6 +243,10 @@ export default function RiskMatrixPage() {
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "1.5rem" }}>
         <h1 className="bf-h2">{matrix.title}</h1>
         <div style={{ display: "flex", gap: "0.5rem" }}>
+          {project && (<>
+            <Button variant="outline" onClick={() => void exportRiskMatrixPdf(matrix, project)}>↓ PDF</Button>
+            <Button variant="outline" onClick={() => exportRiskMatrixExcel(matrix, project)}>↓ Excel</Button>
+          </>)}
           <Button variant="outline" onClick={openTemplateModal}>Lagre som mal</Button>
           <Button variant="filled" onClick={() => { setShowForm(true); setEditingId(null); setForm(emptyRisk); setResidualEnabled(false); }}>+ Legg til risiko</Button>
         </div>

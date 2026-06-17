@@ -1,7 +1,8 @@
 import { useEffect, useState } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { Button, Input, Modal, TextArea } from "@intility/bifrost-react";
-import { api, type Meeting, type MeetingPlan, type Template } from "../api/client";
+import { api, type Project, type Meeting, type MeetingPlan, type Template } from "../api/client";
+import { exportMeetingPlanPdf, exportMeetingPlanExcel } from "../utils/exportUtils";
 import { isMsalConfigured, msalInstance } from "../auth/msalConfig";
 import { fetchOutlookMeetingsByCategory, type OutlookEvent } from "../auth/calendarService";
 
@@ -32,6 +33,7 @@ export default function MeetingPlanPage() {
   const navigate = useNavigate();
 
   const [plan, setPlan] = useState<MeetingPlan | null>(null);
+  const [project, setProject] = useState<Project | null>(null);
 
   // ── Meeting form modal ───────────────────────────────────────────────────────
   const [showMeetingModal, setShowMeetingModal] = useState(false);
@@ -61,6 +63,7 @@ export default function MeetingPlanPage() {
   useEffect(() => {
     if (projectId && planId) {
       api.meetingPlans.get(projectId, planId).then(setPlan);
+      api.projects.get(projectId).then(setProject);
     }
   }, [projectId, planId]);
 
@@ -231,6 +234,10 @@ export default function MeetingPlanPage() {
           )}
         </div>
         <div style={{ display: "flex", gap: "0.5rem" }}>
+          {project && (<>
+            <Button variant="outline" onClick={() => void exportMeetingPlanPdf(plan, project)}>↓ PDF</Button>
+            <Button variant="outline" onClick={() => exportMeetingPlanExcel(plan, project)}>↓ Excel</Button>
+          </>)}
           <Button variant="outline" onClick={openTemplateModal}>Lagre som mal</Button>
           {isMsalConfigured && (
             <Button variant="outline" onClick={openImport}>Importer fra Outlook</Button>

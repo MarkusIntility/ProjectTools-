@@ -71,6 +71,21 @@ def _migrate_is_primary():
 
 _migrate_is_primary()
 
+
+def _migrate_project_manager():
+    """Add project_manager column to projects if not present."""
+    inspector = inspect(engine)
+    if "projects" not in inspector.get_table_names():
+        return
+    existing = {col["name"] for col in inspector.get_columns("projects")}
+    if "project_manager" not in existing:
+        with engine.connect() as conn:
+            conn.execute(text("ALTER TABLE [projects] ADD [project_manager] NVARCHAR(200) NULL"))
+            conn.commit()
+
+
+_migrate_project_manager()
+
 app = FastAPI(title="ProjectTools API", version="1.0.0")
 
 app.add_middleware(

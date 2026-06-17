@@ -16,6 +16,7 @@ class Project(Base):
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_uuid)
     name: Mapped[str] = mapped_column(String(200))
     description: Mapped[str | None] = mapped_column(Text)
+    project_manager: Mapped[str | None] = mapped_column(String(200))
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 

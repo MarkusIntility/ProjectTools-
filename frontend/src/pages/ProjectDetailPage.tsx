@@ -4,6 +4,7 @@ import { Button, Input, Modal } from "@intility/bifrost-react";
 import { api, type Project, type RiskMatrix, type RiskItem, type CommunicationPlan, type MeetingPlan, type Runbook, type ProjectPlan, type OppgaveListe, type Template } from "../api/client";
 import { isMsalConfigured, msalInstance } from "../auth/msalConfig";
 import { fetchPlannerData } from "../auth/plannerService";
+import { exportDashboardPdf } from "../utils/exportUtils";
 
 const ACCENT_COLORS = [
   "#4C6EF5", "#7950F2", "#E64980", "#F76707",
@@ -145,6 +146,10 @@ export default function ProjectDetailPage() {
   const [renameSaving, setRenameSaving] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState<{ id: string; title: string; type: PlanType } | null>(null);
   const [deleting, setDeleting] = useState(false);
+
+  const [editProjectModal, setEditProjectModal] = useState(false);
+  const [editProjectManager, setEditProjectManager] = useState("");
+  const [editProjectSaving, setEditProjectSaving] = useState(false);
 
   useEffect(() => {
     if (!projectId) return;
@@ -338,6 +343,22 @@ export default function ProjectDetailPage() {
     }
   }
 
+  async function handleEditProject() {
+    if (!projectId || !project) return;
+    setEditProjectSaving(true);
+    try {
+      const updated = await api.projects.update(projectId, {
+        name: project.name,
+        description: project.description ?? undefined,
+        project_manager: editProjectManager.trim() || null,
+      });
+      setProject(updated);
+      setEditProjectModal(false);
+    } finally {
+      setEditProjectSaving(false);
+    }
+  }
+
   if (!project) return <div style={{ padding: "2rem" }}>Laster...</div>;
 
   const color = accentColor(project.name);
@@ -357,10 +378,22 @@ export default function ProjectDetailPage() {
         <div style={{ width: 56, height: 56, borderRadius: "50%", background: color, color: "#fff", display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 700, fontSize: "1.1rem", flexShrink: 0 }}>
           {initials(project.name)}
         </div>
-        <div>
+        <div style={{ flex: 1 }}>
           <h1 className="bf-h2" style={{ margin: 0 }}>{project.name}</h1>
           {project.description && <p style={{ color: "var(--bfc-base-c-2)", margin: "0.25rem 0 0", fontSize: "0.95rem" }}>{project.description}</p>}
+          {project.project_manager && (
+            <p style={{ color: "var(--bfc-base-c-2)", margin: "0.25rem 0 0", fontSize: "0.85rem" }}>
+              <span style={{ fontWeight: 600 }}>Prosjektleder:</span> {project.project_manager}
+            </p>
+          )}
         </div>
+        <button
+          onClick={() => { setEditProjectManager(project.project_manager ?? ""); setEditProjectModal(true); }}
+          style={{ background: "none", border: "none", cursor: "pointer", color: "var(--bfc-base-c-2)", fontSize: "0.82rem", padding: "4px 8px", borderRadius: 4, flexShrink: 0 }}
+          title="Rediger prosjektleder"
+        >
+          ✎ Rediger
+        </button>
       </div>
 
       {/* Tab switcher */}
@@ -381,6 +414,7 @@ export default function ProjectDetailPage() {
 
       {activeView === "dashboard" ? (
         <DashboardView
+          project={project}
           riskMatrices={riskMatrices}
           projectPlans={projectPlans}
           oppgaveLister={oppgaveLister}
@@ -682,6 +716,25 @@ export default function ProjectDetailPage() {
           </div>
         </div>
       </Modal>
+
+      {/* ─── Edit project manager modal ───────────────────────────────────────── */}
+      <Modal isOpen={editProjectModal} onRequestClose={() => setEditProjectModal(false)} header="Prosjektleder">
+        <div style={{ display: "flex", flexDirection: "column", gap: "1rem" }}>
+          <Input
+            label="Prosjektleder"
+            value={editProjectManager}
+            onChange={(e) => setEditProjectManager(e.target.value)}
+            placeholder="Navn på prosjektleder"
+            autoFocus
+          />
+          <div style={{ display: "flex", justifyContent: "flex-end", gap: "0.5rem" }}>
+            <Button onClick={() => setEditProjectModal(false)}>Avbryt</Button>
+            <Button variant="filled" onClick={handleEditProject} state={editProjectSaving ? "inactive" : "default"}>
+              {editProjectSaving ? "Lagrer..." : "Lagre"}
+            </Button>
+          </div>
+        </div>
+      </Modal>
     </div>
   );
 }
@@ -957,7 +1010,8 @@ function ResourceProgressRow({ name, done, total, color, typeLabel, external, ex
 
 // ── Dashboard view ────────────────────────────────────────────────────────────
 
-function DashboardView({ riskMatrices, projectPlans, oppgaveLister, runbooks, meetingPlans, projectId, navigate }: {
+function DashboardView({ project, riskMatrices, projectPlans, oppgaveLister, runbooks, meetingPlans, projectId, navigate }: {
+  project: Project;
   riskMatrices: RiskMatrix[];
   projectPlans: ProjectPlan[];
   oppgaveLister: OppgaveListe[];
@@ -1165,8 +1219,33 @@ function DashboardView({ riskMatrices, projectPlans, oppgaveLister, runbooks, me
     planTasksTotal > 0 ? `${planTasksDone} av ${planTasksTotal} oppgaver ferdig` :
     "Ingen prosjektplaner";
 
+  function handleDashboardExport() {
+    void exportDashboardPdf({
+      project,
+      openRisksCount: openRisks.length,
+      highestRiskScore: highestScore,
+      topRisks: topRisks.map((r) => ({ description: r.description, risk_score: r.risk_score, fagomrade: r.fagomrade ?? null, risk_owner: r.risk_owner ?? null })),
+      doneOppgaver,
+      totalOppgaver,
+      nextMeetingTitle: nextMeeting?.title ?? null,
+      nextMeetingDate: nextMeeting?.date ?? null,
+      leveranserPct,
+      planTasksDone,
+      planTasksTotal,
+      primaryPlanTitle: primaryProjectPlan?.title ?? null,
+      primaryOppgaveTitle: primaryOppgaveListe?.title ?? null,
+      primaryMeetingTitle: primaryMeetingPlan?.title ?? null,
+      primaryMatrixTitle: primaryMatrix?.title ?? null,
+    });
+  }
+
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: "2rem" }}>
+
+      {/* ── Dashboard toolbar ───────────────────────────────────────────────── */}
+      <div style={{ display: "flex", justifyContent: "flex-end" }}>
+        <Button variant="outline" onClick={handleDashboardExport}>↓ Eksporter PDF</Button>
+      </div>
 
       {/* ── KPI row ─────────────────────────────────────────────────────────── */}
       <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: "1.25rem" }}>

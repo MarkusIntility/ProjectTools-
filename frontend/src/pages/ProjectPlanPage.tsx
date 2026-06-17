@@ -1,7 +1,8 @@
 import { useEffect, useState, useCallback } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { Button, Input, Modal } from "@intility/bifrost-react";
-import { api, type ProjectPlan, type ProjectPlanTask, type Template } from "../api/client";
+import { api, type Project, type ProjectPlan, type ProjectPlanTask, type Template } from "../api/client";
+import { exportProjectPlanPdf, exportProjectPlanExcel } from "../utils/exportUtils";
 import { isMsalConfigured, msalInstance, PLANNER_SCOPES } from "../auth/msalConfig";
 import { fetchPlannerData, parsePlanId, togglePlannerTask, type PlannerData, type PlannerTask } from "../auth/plannerService";
 import type { AccountInfo } from "@azure/msal-browser";
@@ -63,6 +64,7 @@ export default function ProjectPlanPage() {
   const { projectId, planId } = useParams<{ projectId: string; planId: string }>();
   const navigate = useNavigate();
   const [plan, setPlan] = useState<ProjectPlan | null>(null);
+  const [project, setProject] = useState<Project | null>(null);
 
   // Planner state
   const [msalReady] = useState(isMsalConfigured);
@@ -94,6 +96,7 @@ export default function ProjectPlanPage() {
   useEffect(() => {
     if (!projectId || !planId) return;
     api.projectPlans.get(projectId, planId).then(setPlan);
+    api.projects.get(projectId).then(setProject);
   }, [projectId, planId]);
 
   useEffect(() => {
@@ -285,6 +288,10 @@ export default function ProjectPlanPage() {
           </div>
         </div>
         <div style={{ display: "flex", gap: "0.5rem", flexShrink: 0 }}>
+          {project && (<>
+            <Button variant="outline" onClick={() => void exportProjectPlanPdf(plan, project, plannerData)}>↓ PDF</Button>
+            <Button variant="outline" onClick={() => exportProjectPlanExcel(plan, project, plannerData)}>↓ Excel</Button>
+          </>)}
           <Button variant="outline" onClick={() => { setPlanTitle(plan.title); setPlanUrl(plan.external_url ?? ""); setEditPlanModal(true); }}>
             Rediger
           </Button>

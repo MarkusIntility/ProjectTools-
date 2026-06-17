@@ -1,7 +1,8 @@
 import { useEffect, useState } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { Button, Input, Modal } from "@intility/bifrost-react";
-import { api, type CommunicationPlan, type CommunicationEntry, type Template } from "../api/client";
+import { api, type Project, type CommunicationPlan, type CommunicationEntry, type Template } from "../api/client";
+import { exportCommPlanPdf, exportCommPlanExcel } from "../utils/exportUtils";
 
 const emptyEntry = {
   stakeholder: "",
@@ -15,6 +16,7 @@ export default function CommunicationPlanPage() {
   const { projectId, planId } = useParams<{ projectId: string; planId: string }>();
   const navigate = useNavigate();
   const [plan, setPlan] = useState<CommunicationPlan | null>(null);
+  const [project, setProject] = useState<Project | null>(null);
   const [showForm, setShowForm] = useState(false);
   const [form, setForm] = useState(emptyEntry);
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -30,6 +32,7 @@ export default function CommunicationPlanPage() {
   useEffect(() => {
     if (projectId && planId) {
       api.communicationPlans.get(projectId, planId).then(setPlan);
+      api.projects.get(projectId).then(setProject);
     }
   }, [projectId, planId]);
 
@@ -103,6 +106,10 @@ export default function CommunicationPlanPage() {
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "1.5rem" }}>
         <h1 className="bf-h2">{plan.title}</h1>
         <div style={{ display: "flex", gap: "0.5rem" }}>
+          {project && (<>
+            <Button variant="outline" onClick={() => void exportCommPlanPdf(plan, project)}>↓ PDF</Button>
+            <Button variant="outline" onClick={() => exportCommPlanExcel(plan, project)}>↓ Excel</Button>
+          </>)}
           <Button variant="outline" onClick={openTemplateModal}>Lagre som mal</Button>
           <Button variant="filled" onClick={() => { setShowForm(true); setEditingId(null); setForm(emptyEntry); }}>+ Legg til oppføring</Button>
         </div>

@@ -1,7 +1,8 @@
 import { useEffect, useState, useCallback } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { Button, Input, Modal } from "@intility/bifrost-react";
-import { api, type OppgaveListe, type Oppgave, type Template } from "../api/client";
+import { api, type Project, type OppgaveListe, type Oppgave, type Template } from "../api/client";
+import { exportOppgavePdf, exportOppgaveExcel } from "../utils/exportUtils";
 import { isMsalConfigured, msalInstance, PLANNER_SCOPES } from "../auth/msalConfig";
 import { fetchPlannerData, parsePlanId, taskStatus, togglePlannerTask, type PlannerData, type PlannerTask } from "../auth/plannerService";
 import type { AccountInfo } from "@azure/msal-browser";
@@ -41,6 +42,7 @@ export default function OppgavePage() {
   const { projectId, listeId } = useParams<{ projectId: string; listeId: string }>();
   const navigate = useNavigate();
   const [liste, setListe] = useState<OppgaveListe | null>(null);
+  const [project, setProject] = useState<Project | null>(null);
 
   const [msalReady] = useState(isMsalConfigured);
   const [plannerAccount, setPlannerAccount] = useState<AccountInfo | null>(null);
@@ -72,6 +74,7 @@ export default function OppgavePage() {
   useEffect(() => {
     if (!projectId || !listeId) return;
     api.oppgaveLister.get(projectId, listeId).then(setListe);
+    api.projects.get(projectId).then(setProject);
   }, [projectId, listeId]);
 
   useEffect(() => {
@@ -250,6 +253,10 @@ export default function OppgavePage() {
           </div>
         </div>
         <div style={{ display: "flex", gap: "0.5rem", flexShrink: 0 }}>
+          {project && (<>
+            <Button variant="outline" onClick={() => void exportOppgavePdf(liste, project, plannerData)}>↓ PDF</Button>
+            <Button variant="outline" onClick={() => exportOppgaveExcel(liste, project, plannerData)}>↓ Excel</Button>
+          </>)}
           <Button variant="outline" onClick={() => { setListeTitle(liste.title); setListeUrl(liste.external_url ?? ""); setEditListeModal(true); }}>
             Rediger
           </Button>

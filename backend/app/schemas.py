@@ -7,6 +7,7 @@ from .models import RiskStatus
 class ProjectBase(BaseModel):
     name: str
     description: str | None = None
+    project_manager: str | None = None
 
 
 class ProjectCreate(ProjectBase):

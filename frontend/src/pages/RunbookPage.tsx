@@ -1,7 +1,8 @@
 import React, { useEffect, useState, useCallback } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { Button, Input, Modal } from "@intility/bifrost-react";
-import { api, type Runbook, type RunbookActivity, type Template } from "../api/client";
+import { api, type Project, type Runbook, type RunbookActivity, type Template } from "../api/client";
+import { exportRunbookPdf, exportRunbookExcel } from "../utils/exportUtils";
 import { isMsalConfigured, msalInstance, PLANNER_SCOPES } from "../auth/msalConfig";
 import { fetchPlannerData, parsePlanId, taskStatus, togglePlannerTask, type PlannerData, type PlannerTask } from "../auth/plannerService";
 import { probeOnboardApi } from "../auth/onboardService";
@@ -72,6 +73,7 @@ export default function RunbookPage() {
   const { projectId, runbookId } = useParams<{ projectId: string; runbookId: string }>();
   const navigate = useNavigate();
   const [runbook, setRunbook] = useState<Runbook | null>(null);
+  const [project, setProject] = useState<Project | null>(null);
   const [activeTab, setActiveTab] = useState<Tab>("dashboard");
 
   // Planner state — MSAL is initialized in main.tsx before React renders
@@ -105,6 +107,7 @@ export default function RunbookPage() {
   useEffect(() => {
     if (!projectId || !runbookId) return;
     api.runbooks.get(projectId, runbookId).then(setRunbook);
+    api.projects.get(projectId).then(setProject);
   }, [projectId, runbookId]);
 
   // Check for existing MSAL login on mount (including after loginRedirect return)
@@ -306,9 +309,15 @@ export default function RunbookPage() {
             <span style={{ fontSize: "0.8rem", color: srcCfg.color, fontWeight: 600 }}>{srcCfg.label}</span>
           </div>
         </div>
-        <Button variant="outline" onClick={() => { setRunbookTitle(runbook.title); setRunbookUrl(runbook.external_url ?? ""); setEditRunbookModal(true); }}>
-          Rediger
-        </Button>
+        <div style={{ display: "flex", gap: "0.5rem" }}>
+          {project && (<>
+            <Button variant="outline" onClick={() => void exportRunbookPdf(runbook, project, plannerData)}>↓ PDF</Button>
+            <Button variant="outline" onClick={() => exportRunbookExcel(runbook, project, plannerData)}>↓ Excel</Button>
+          </>)}
+          <Button variant="outline" onClick={() => { setRunbookTitle(runbook.title); setRunbookUrl(runbook.external_url ?? ""); setEditRunbookModal(true); }}>
+            Rediger
+          </Button>
+        </div>
       </div>
 
       {/* Tab bar */}
