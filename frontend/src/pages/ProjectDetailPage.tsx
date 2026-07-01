@@ -1299,6 +1299,7 @@ function DashboardView({ project, riskMatrices, projectPlans, oppgaveLister, run
           label="Neste møte"
           sub={nextMeeting?.title ?? "Ingen planlagte møter"}
           color="#7950F2"
+          onClick={primaryMeetingPlan ? () => navigate(`/projects/${projectId}/meeting-plan/${primaryMeetingPlan.id}`) : undefined}
         />
         <KpiCard
           value={plannerLoading && hasPlannerPlans ? "…" : (leveranserPct !== null ? `${leveranserPct}%` : "–")}
