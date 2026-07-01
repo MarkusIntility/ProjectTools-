@@ -12,7 +12,7 @@ const config: Configuration = {
     redirectUri: window.location.origin,
   },
   cache: {
-    cacheLocation: "sessionStorage",
+    cacheLocation: "localStorage",
   },
 };
 
