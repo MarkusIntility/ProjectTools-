@@ -245,7 +245,7 @@ export default function RiskMatrixPage() {
         <div style={{ display: "flex", gap: "0.5rem" }}>
           {project && (<>
             <Button variant="outline" onClick={() => void exportRiskMatrixPdf(matrix, project)}>↓ PDF</Button>
-            <Button variant="outline" onClick={() => exportRiskMatrixExcel(matrix, project)}>↓ Excel</Button>
+            <Button variant="outline" onClick={() => void exportRiskMatrixExcel(matrix, project)}>↓ Excel</Button>
           </>)}
           <Button variant="outline" onClick={openTemplateModal}>Lagre som mal</Button>
           <Button variant="filled" onClick={() => { setShowForm(true); setEditingId(null); setForm(emptyRisk); setResidualEnabled(false); }}>+ Legg til risiko</Button>

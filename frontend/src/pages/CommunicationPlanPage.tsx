@@ -108,7 +108,7 @@ export default function CommunicationPlanPage() {
         <div style={{ display: "flex", gap: "0.5rem" }}>
           {project && (<>
             <Button variant="outline" onClick={() => void exportCommPlanPdf(plan, project)}>↓ PDF</Button>
-            <Button variant="outline" onClick={() => exportCommPlanExcel(plan, project)}>↓ Excel</Button>
+            <Button variant="outline" onClick={() => void exportCommPlanExcel(plan, project)}>↓ Excel</Button>
           </>)}
           <Button variant="outline" onClick={openTemplateModal}>Lagre som mal</Button>
           <Button variant="filled" onClick={() => { setShowForm(true); setEditingId(null); setForm(emptyEntry); }}>+ Legg til oppføring</Button>

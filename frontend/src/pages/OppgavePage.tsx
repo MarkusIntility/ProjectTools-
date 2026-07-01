@@ -255,7 +255,7 @@ export default function OppgavePage() {
         <div style={{ display: "flex", gap: "0.5rem", flexShrink: 0 }}>
           {project && (<>
             <Button variant="outline" onClick={() => void exportOppgavePdf(liste, project, plannerData)}>↓ PDF</Button>
-            <Button variant="outline" onClick={() => exportOppgaveExcel(liste, project, plannerData)}>↓ Excel</Button>
+            <Button variant="outline" onClick={() => void exportOppgaveExcel(liste, project, plannerData)}>↓ Excel</Button>
           </>)}
           <Button variant="outline" onClick={() => { setListeTitle(liste.title); setListeUrl(liste.external_url ?? ""); setEditListeModal(true); }}>
             Rediger

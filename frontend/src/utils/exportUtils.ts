@@ -1,6 +1,6 @@
 import { jsPDF } from "jspdf";
 import { autoTable } from "jspdf-autotable";
-import * as XLSX from "xlsx";
+import ExcelJS from "exceljs";
 import type {
   Project,
   RiskMatrix,
@@ -20,6 +20,29 @@ const ALT_ROW: [number, number, number] = [246, 248, 252];
 const HEAD_TEXT = 255;
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
+
+async function downloadExcel(wb: ExcelJS.Workbook, filename: string) {
+  const buffer = await wb.xlsx.writeBuffer();
+  const blob = new Blob([buffer as ArrayBuffer], {
+    type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+  });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+}
+
+function addExcelHeader(ws: ExcelJS.Worksheet, headers: string[], columnWidths: number[]) {
+  ws.columns = columnWidths.map((width) => ({ width }));
+  const row = ws.addRow(headers);
+  row.font = { bold: true, color: { argb: "FFFFFFFF" } };
+  row.fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FF0F1941" } };
+  row.alignment = { vertical: "middle" };
+}
 
 function safeName(str: string): string {
   return str.replace(/[<>:"/\\|?*]/g, "_").slice(0, 60);
@@ -190,22 +213,20 @@ export async function exportRiskMatrixPdf(matrix: RiskMatrix, project: Project) 
   } catch (err) { console.error("[exportRiskMatrixPdf]", err); throw err; }
 }
 
-export function exportRiskMatrixExcel(matrix: RiskMatrix, project: Project) {
+export async function exportRiskMatrixExcel(matrix: RiskMatrix, project: Project) {
   const STATUS: Record<string, string> = { open: "Åpen", mitigated: "Mitigert", closed: "Lukket" };
-  const wb = XLSX.utils.book_new();
-  const ws = XLSX.utils.aoa_to_sheet([
-    ["Beskrivelse", "Fase", "Fagområde", "Risiko eier", "Sannsynlighet", "Konsekvens", "Score", "Tiltak", "Ansvarlig (tiltak)", "Restrisiko", "Status"],
-    ...matrix.risks.map((r) => [
-      r.description, r.fase ?? "", r.fagomrade ?? "", r.risk_owner ?? "",
-      r.probability, r.consequence, r.risk_score,
-      r.mitigation ?? "", r.owner ?? "",
-      r.residual_score ?? "",
-      STATUS[r.status] ?? r.status,
-    ]),
-  ]);
-  ws["!cols"] = [40, 12, 18, 20, 14, 14, 8, 35, 20, 14, 12].map((wch) => ({ wch }));
-  XLSX.utils.book_append_sheet(wb, ws, "Risikomatrise");
-  XLSX.writeFile(wb, `${safeName(project.name)}_${safeName(matrix.title)}_risikomatrise.xlsx`);
+  const wb = new ExcelJS.Workbook();
+  const ws = wb.addWorksheet("Risikomatrise");
+  addExcelHeader(ws, ["Beskrivelse", "Fase", "Fagområde", "Risiko eier", "Sannsynlighet", "Konsekvens", "Score", "Tiltak", "Ansvarlig (tiltak)", "Restrisiko", "Status"],
+    [40, 12, 18, 20, 14, 14, 8, 35, 20, 14, 12]);
+  matrix.risks.forEach((r) => ws.addRow([
+    r.description, r.fase ?? "", r.fagomrade ?? "", r.risk_owner ?? "",
+    r.probability, r.consequence, r.risk_score,
+    r.mitigation ?? "", r.owner ?? "",
+    r.residual_score ?? "",
+    STATUS[r.status] ?? r.status,
+  ]));
+  await downloadExcel(wb, `${safeName(project.name)}_${safeName(matrix.title)}_risikomatrise.xlsx`);
 }
 
 // ── Project Plan ──────────────────────────────────────────────────────────────
@@ -266,37 +287,25 @@ export async function exportProjectPlanPdf(
   } catch (err) { console.error("[exportProjectPlanPdf]", err); throw err; }
 }
 
-export function exportProjectPlanExcel(
+export async function exportProjectPlanExcel(
   plan: ProjectPlan,
   project: Project,
   plannerData: PlannerData | null
 ) {
-  const wb = XLSX.utils.book_new();
-  let rows: (string | number)[][];
+  const wb = new ExcelJS.Workbook();
+  const ws = wb.addWorksheet("Prosjektplan");
 
   if (plan.source === "own") {
-    rows = [
-      ["Oppgave", "Fase/Bucket", "Start", "Frist", "Ansvarlig", "% Ferdig"],
-      ...plan.tasks.map((t) => [
-        t.name, t.bucket ?? "", fmtDate(t.start_date), fmtDate(t.end_date),
-        t.responsible ?? "", t.percent_complete,
-      ]),
-    ];
+    addExcelHeader(ws, ["Oppgave", "Fase/Bucket", "Start", "Frist", "Ansvarlig", "% Ferdig"], [45, 20, 16, 16, 22, 12]);
+    plan.tasks.forEach((t) => ws.addRow([t.name, t.bucket ?? "", fmtDate(t.start_date), fmtDate(t.end_date), t.responsible ?? "", t.percent_complete]));
   } else if (plannerData) {
-    rows = [
-      ["Oppgave", "Bucket", "Forfallsdato", "% Ferdig"],
-      ...plannerData.tasks.map((t) => [
-        t.title, plannerData.buckets.find((b) => b.id === t.bucketId)?.name ?? "", fmtDate(t.dueDateTime ?? null), t.percentComplete,
-      ]),
-    ];
+    addExcelHeader(ws, ["Oppgave", "Bucket", "Forfallsdato", "% Ferdig"], [45, 20, 16, 12]);
+    plannerData.tasks.forEach((t) => ws.addRow([t.title, plannerData.buckets.find((b) => b.id === t.bucketId)?.name ?? "", fmtDate(t.dueDateTime ?? null), t.percentComplete]));
   } else {
-    rows = [["Ekstern plan — ingen lokal data tilgjengelig"]];
+    ws.addRow(["Ekstern plan — ingen lokal data tilgjengelig"]);
   }
 
-  const ws = XLSX.utils.aoa_to_sheet(rows);
-  ws["!cols"] = [45, 20, 16, 16, 22, 12].map((wch) => ({ wch }));
-  XLSX.utils.book_append_sheet(wb, ws, "Prosjektplan");
-  XLSX.writeFile(wb, `${safeName(project.name)}_${safeName(plan.title)}_prosjektplan.xlsx`);
+  await downloadExcel(wb, `${safeName(project.name)}_${safeName(plan.title)}_prosjektplan.xlsx`);
 }
 
 // ── Oppgaveliste ──────────────────────────────────────────────────────────────
@@ -358,36 +367,25 @@ export async function exportOppgavePdf(
   } catch (err) { console.error("[exportOppgavePdf]", err); throw err; }
 }
 
-export function exportOppgaveExcel(
+export async function exportOppgaveExcel(
   liste: OppgaveListe,
   project: Project,
   plannerData: PlannerData | null
 ) {
-  const wb = XLSX.utils.book_new();
-  let rows: (string | number)[][];
+  const wb = new ExcelJS.Workbook();
+  const ws = wb.addWorksheet("Oppgaver");
 
   if (liste.source === "own") {
-    rows = [
-      ["Oppgave", "Ansvarlig", "Forfallsdato", "Status", "Beskrivelse"],
-      ...liste.oppgaver.map((o) => [
-        o.name, o.responsible ?? "", fmtDate(o.due_date), OPPGAVE_STATUS[o.status] ?? o.status, o.description ?? "",
-      ]),
-    ];
+    addExcelHeader(ws, ["Oppgave", "Ansvarlig", "Forfallsdato", "Status", "Beskrivelse"], [42, 22, 16, 16, 40]);
+    liste.oppgaver.forEach((o) => ws.addRow([o.name, o.responsible ?? "", fmtDate(o.due_date), OPPGAVE_STATUS[o.status] ?? o.status, o.description ?? ""]));
   } else if (plannerData) {
-    rows = [
-      ["Oppgave", "Bucket", "Forfallsdato", "% Ferdig"],
-      ...plannerData.tasks.map((t) => [
-        t.title, plannerData.buckets.find((b) => b.id === t.bucketId)?.name ?? "", fmtDate(t.dueDateTime ?? null), t.percentComplete,
-      ]),
-    ];
+    addExcelHeader(ws, ["Oppgave", "Bucket", "Forfallsdato", "% Ferdig"], [42, 22, 16, 12]);
+    plannerData.tasks.forEach((t) => ws.addRow([t.title, plannerData.buckets.find((b) => b.id === t.bucketId)?.name ?? "", fmtDate(t.dueDateTime ?? null), t.percentComplete]));
   } else {
-    rows = [["Ekstern liste — ingen lokal data tilgjengelig"]];
+    ws.addRow(["Ekstern liste — ingen lokal data tilgjengelig"]);
   }
 
-  const ws = XLSX.utils.aoa_to_sheet(rows);
-  ws["!cols"] = [42, 22, 16, 16, 40].map((wch) => ({ wch }));
-  XLSX.utils.book_append_sheet(wb, ws, "Oppgaver");
-  XLSX.writeFile(wb, `${safeName(project.name)}_${safeName(liste.title)}_oppgaver.xlsx`);
+  await downloadExcel(wb, `${safeName(project.name)}_${safeName(liste.title)}_oppgaver.xlsx`);
 }
 
 // ── Runbook ───────────────────────────────────────────────────────────────────
@@ -450,37 +448,25 @@ export async function exportRunbookPdf(
   } catch (err) { console.error("[exportRunbookPdf]", err); throw err; }
 }
 
-export function exportRunbookExcel(
+export async function exportRunbookExcel(
   runbook: Runbook,
   project: Project,
   plannerData: PlannerData | null
 ) {
-  const wb = XLSX.utils.book_new();
-  let rows: (string | number)[][];
+  const wb = new ExcelJS.Workbook();
+  const ws = wb.addWorksheet("Runbook");
 
   if (runbook.source === "own") {
-    rows = [
-      ["Aktivitet", "Fase", "Status", "Start", "Frist", "Ansvarlig"],
-      ...runbook.activities.map((a) => [
-        a.name, a.phase ?? "", ACTIVITY_STATUS[a.status] ?? a.status,
-        fmtDate(a.start_date), fmtDate(a.end_date), a.responsible ?? "",
-      ]),
-    ];
+    addExcelHeader(ws, ["Aktivitet", "Fase", "Status", "Start", "Frist", "Ansvarlig"], [45, 20, 18, 16, 16, 25]);
+    runbook.activities.forEach((a) => ws.addRow([a.name, a.phase ?? "", ACTIVITY_STATUS[a.status] ?? a.status, fmtDate(a.start_date), fmtDate(a.end_date), a.responsible ?? ""]));
   } else if (plannerData) {
-    rows = [
-      ["Aktivitet", "Bucket", "Forfallsdato", "% Ferdig"],
-      ...plannerData.tasks.map((t) => [
-        t.title, plannerData.buckets.find((b) => b.id === t.bucketId)?.name ?? "", fmtDate(t.dueDateTime ?? null), t.percentComplete,
-      ]),
-    ];
+    addExcelHeader(ws, ["Aktivitet", "Bucket", "Forfallsdato", "% Ferdig"], [45, 20, 16, 12]);
+    plannerData.tasks.forEach((t) => ws.addRow([t.title, plannerData.buckets.find((b) => b.id === t.bucketId)?.name ?? "", fmtDate(t.dueDateTime ?? null), t.percentComplete]));
   } else {
-    rows = [["Ekstern runbook — ingen lokal data tilgjengelig"]];
+    ws.addRow(["Ekstern runbook — ingen lokal data tilgjengelig"]);
   }
 
-  const ws = XLSX.utils.aoa_to_sheet(rows);
-  ws["!cols"] = [45, 20, 18, 16, 16, 25].map((wch) => ({ wch }));
-  XLSX.utils.book_append_sheet(wb, ws, "Runbook");
-  XLSX.writeFile(wb, `${safeName(project.name)}_${safeName(runbook.title)}_runbook.xlsx`);
+  await downloadExcel(wb, `${safeName(project.name)}_${safeName(runbook.title)}_runbook.xlsx`);
 }
 
 // ── Meeting Plan ──────────────────────────────────────────────────────────────
@@ -513,15 +499,12 @@ export async function exportMeetingPlanPdf(plan: MeetingPlan, project: Project) 
   } catch (err) { console.error("[exportMeetingPlanPdf]", err); throw err; }
 }
 
-export function exportMeetingPlanExcel(plan: MeetingPlan, project: Project) {
-  const wb = XLSX.utils.book_new();
-  const ws = XLSX.utils.aoa_to_sheet([
-    ["Møte", "Dato og tid", "Formål"],
-    ...plan.meetings.map((m) => [m.title, fmtDateTime(m.date), m.purpose ?? ""]),
-  ]);
-  ws["!cols"] = [35, 28, 50].map((wch) => ({ wch }));
-  XLSX.utils.book_append_sheet(wb, ws, "Møteplan");
-  XLSX.writeFile(wb, `${safeName(project.name)}_${safeName(plan.title)}_møteplan.xlsx`);
+export async function exportMeetingPlanExcel(plan: MeetingPlan, project: Project) {
+  const wb = new ExcelJS.Workbook();
+  const ws = wb.addWorksheet("Møteplan");
+  addExcelHeader(ws, ["Møte", "Dato og tid", "Formål"], [35, 28, 50]);
+  plan.meetings.forEach((m) => ws.addRow([m.title, fmtDateTime(m.date), m.purpose ?? ""]));
+  await downloadExcel(wb, `${safeName(project.name)}_${safeName(plan.title)}_møteplan.xlsx`);
 }
 
 // ── Communication Plan ────────────────────────────────────────────────────────
@@ -555,15 +538,12 @@ export async function exportCommPlanPdf(plan: CommunicationPlan, project: Projec
   } catch (err) { console.error("[exportCommPlanPdf]", err); throw err; }
 }
 
-export function exportCommPlanExcel(plan: CommunicationPlan, project: Project) {
-  const wb = XLSX.utils.book_new();
-  const ws = XLSX.utils.aoa_to_sheet([
-    ["Interessent", "Budskap", "Kanal", "Frekvens", "Ansvarlig"],
-    ...plan.entries.map((e) => [e.stakeholder, e.message, e.channel, e.frequency, e.responsible]),
-  ]);
-  ws["!cols"] = [25, 50, 18, 18, 22].map((wch) => ({ wch }));
-  XLSX.utils.book_append_sheet(wb, ws, "Kommunikasjonsplan");
-  XLSX.writeFile(wb, `${safeName(project.name)}_${safeName(plan.title)}_kommunikasjonsplan.xlsx`);
+export async function exportCommPlanExcel(plan: CommunicationPlan, project: Project) {
+  const wb = new ExcelJS.Workbook();
+  const ws = wb.addWorksheet("Kommunikasjonsplan");
+  addExcelHeader(ws, ["Interessent", "Budskap", "Kanal", "Frekvens", "Ansvarlig"], [25, 50, 18, 18, 22]);
+  plan.entries.forEach((e) => ws.addRow([e.stakeholder, e.message, e.channel, e.frequency, e.responsible]));
+  await downloadExcel(wb, `${safeName(project.name)}_${safeName(plan.title)}_kommunikasjonsplan.xlsx`);
 }
 
 // ── Dashboard (PDF only) ──────────────────────────────────────────────────────

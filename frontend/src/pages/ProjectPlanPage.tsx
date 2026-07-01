@@ -290,7 +290,7 @@ export default function ProjectPlanPage() {
         <div style={{ display: "flex", gap: "0.5rem", flexShrink: 0 }}>
           {project && (<>
             <Button variant="outline" onClick={() => void exportProjectPlanPdf(plan, project, plannerData)}>↓ PDF</Button>
-            <Button variant="outline" onClick={() => exportProjectPlanExcel(plan, project, plannerData)}>↓ Excel</Button>
+            <Button variant="outline" onClick={() => void exportProjectPlanExcel(plan, project, plannerData)}>↓ Excel</Button>
           </>)}
           <Button variant="outline" onClick={() => { setPlanTitle(plan.title); setPlanUrl(plan.external_url ?? ""); setEditPlanModal(true); }}>
             Rediger

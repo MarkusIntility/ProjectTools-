@@ -312,7 +312,7 @@ export default function RunbookPage() {
         <div style={{ display: "flex", gap: "0.5rem" }}>
           {project && (<>
             <Button variant="outline" onClick={() => void exportRunbookPdf(runbook, project, plannerData)}>↓ PDF</Button>
-            <Button variant="outline" onClick={() => exportRunbookExcel(runbook, project, plannerData)}>↓ Excel</Button>
+            <Button variant="outline" onClick={() => void exportRunbookExcel(runbook, project, plannerData)}>↓ Excel</Button>
           </>)}
           <Button variant="outline" onClick={() => { setRunbookTitle(runbook.title); setRunbookUrl(runbook.external_url ?? ""); setEditRunbookModal(true); }}>
             Rediger

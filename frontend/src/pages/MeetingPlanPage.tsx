@@ -236,7 +236,7 @@ export default function MeetingPlanPage() {
         <div style={{ display: "flex", gap: "0.5rem" }}>
           {project && (<>
             <Button variant="outline" onClick={() => void exportMeetingPlanPdf(plan, project)}>↓ PDF</Button>
-            <Button variant="outline" onClick={() => exportMeetingPlanExcel(plan, project)}>↓ Excel</Button>
+            <Button variant="outline" onClick={() => void exportMeetingPlanExcel(plan, project)}>↓ Excel</Button>
           </>)}
           <Button variant="outline" onClick={openTemplateModal}>Lagre som mal</Button>
           {isMsalConfigured && (
