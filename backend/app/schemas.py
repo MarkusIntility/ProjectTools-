@@ -8,6 +8,7 @@ class ProjectBase(BaseModel):
     name: str
     description: str | None = None
     project_manager: str | None = None
+    status: str = "active"
 
 
 class ProjectCreate(ProjectBase):

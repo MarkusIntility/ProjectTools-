@@ -149,6 +149,7 @@ export default function ProjectDetailPage() {
 
   const [editProjectModal, setEditProjectModal] = useState(false);
   const [editProjectManager, setEditProjectManager] = useState("");
+  const [editProjectStatus, setEditProjectStatus] = useState<"active" | "not_started" | "completed">("active");
   const [editProjectSaving, setEditProjectSaving] = useState(false);
 
   useEffect(() => {
@@ -351,6 +352,7 @@ export default function ProjectDetailPage() {
         name: project.name,
         description: project.description ?? undefined,
         project_manager: editProjectManager.trim() || null,
+        status: editProjectStatus,
       });
       setProject(updated);
       setEditProjectModal(false);
@@ -388,7 +390,7 @@ export default function ProjectDetailPage() {
           )}
         </div>
         <button
-          onClick={() => { setEditProjectManager(project.project_manager ?? ""); setEditProjectModal(true); }}
+          onClick={() => { setEditProjectManager(project.project_manager ?? ""); setEditProjectStatus(project.status ?? "active"); setEditProjectModal(true); }}
           style={{ background: "none", border: "none", cursor: "pointer", color: "var(--bfc-base-c-2)", fontSize: "0.82rem", padding: "4px 8px", borderRadius: 4, flexShrink: 0 }}
           title="Rediger prosjektleder"
         >
@@ -717,8 +719,8 @@ export default function ProjectDetailPage() {
         </div>
       </Modal>
 
-      {/* ─── Edit project manager modal ───────────────────────────────────────── */}
-      <Modal isOpen={editProjectModal} onRequestClose={() => setEditProjectModal(false)} header="Prosjektleder">
+      {/* ─── Edit project modal ───────────────────────────────────────────────── */}
+      <Modal isOpen={editProjectModal} onRequestClose={() => setEditProjectModal(false)} header="Rediger prosjekt">
         <div style={{ display: "flex", flexDirection: "column", gap: "1rem" }}>
           <Input
             label="Prosjektleder"
@@ -727,6 +729,33 @@ export default function ProjectDetailPage() {
             placeholder="Navn på prosjektleder"
             autoFocus
           />
+          <div>
+            <label style={{ display: "block", fontSize: "0.85rem", fontWeight: 600, marginBottom: "0.4rem", color: "var(--bfc-base-c-1)" }}>
+              Status
+            </label>
+            <div style={{ display: "flex", gap: "0.5rem" }}>
+              {(["not_started", "active", "completed"] as const).map((s) => {
+                const cfg = { not_started: { label: "Ikke startet", color: "#868E96" }, active: { label: "Aktivt", color: "#1971C2" }, completed: { label: "Ferdig", color: "#2F9E44" } }[s];
+                const isSelected = editProjectStatus === s;
+                return (
+                  <button
+                    key={s}
+                    onClick={() => setEditProjectStatus(s)}
+                    style={{
+                      flex: 1, padding: "8px 4px", borderRadius: 6, border: `2px solid`,
+                      borderColor: isSelected ? cfg.color : "var(--bfc-base-dimmed)",
+                      background: isSelected ? `${cfg.color}15` : "var(--bfc-base-3)",
+                      color: isSelected ? cfg.color : "var(--bfc-base-c-2)",
+                      fontWeight: isSelected ? 600 : 400, fontSize: "0.82rem",
+                      cursor: "pointer", transition: "all 0.15s ease",
+                    }}
+                  >
+                    {cfg.label}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
           <div style={{ display: "flex", justifyContent: "flex-end", gap: "0.5rem" }}>
             <Button onClick={() => setEditProjectModal(false)}>Avbryt</Button>
             <Button variant="filled" onClick={handleEditProject} state={editProjectSaving ? "inactive" : "default"}>

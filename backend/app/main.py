@@ -86,6 +86,21 @@ def _migrate_project_manager():
 
 _migrate_project_manager()
 
+
+def _migrate_project_status():
+    """Add status column to projects if not present."""
+    inspector = inspect(engine)
+    if "projects" not in inspector.get_table_names():
+        return
+    existing = {col["name"] for col in inspector.get_columns("projects")}
+    if "status" not in existing:
+        with engine.connect() as conn:
+            conn.execute(text("ALTER TABLE [projects] ADD [status] NVARCHAR(20) NOT NULL DEFAULT 'active'"))
+            conn.commit()
+
+
+_migrate_project_status()
+
 app = FastAPI(title="ProjectTools API", version="1.0.0")
 
 app.add_middleware(

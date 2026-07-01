@@ -18,6 +18,7 @@ export interface Project {
   name: string;
   description: string | null;
   project_manager: string | null;
+  status: "active" | "not_started" | "completed";
   created_at: string;
   updated_at: string;
 }
@@ -167,9 +168,9 @@ export const api = {
   projects: {
     list: () => request<Project[]>("/projects/"),
     get: (id: string) => request<Project>(`/projects/${id}`),
-    create: (data: { name: string; description?: string; project_manager?: string | null }) =>
+    create: (data: { name: string; description?: string; project_manager?: string | null; status?: string }) =>
       request<Project>("/projects/", { method: "POST", body: JSON.stringify(data) }),
-    update: (id: string, data: { name: string; description?: string; project_manager?: string | null }) =>
+    update: (id: string, data: { name: string; description?: string; project_manager?: string | null; status?: string }) =>
       request<Project>(`/projects/${id}`, { method: "PUT", body: JSON.stringify(data) }),
     delete: (id: string) => request<void>(`/projects/${id}`, { method: "DELETE" }),
   },
