@@ -19,7 +19,7 @@ spec:
     spec:
       containers:
         - name: frontend
-          image: ghcr.io/markusintility/projecttools-frontend:644b4c1ac2258ef30041b12c1a6993b325495b15
+          image: ghcr.io/markusintility/projecttools-frontend:7ffe707c185debcd1e19eabddc95a342beef9eba
           ports:
             - containerPort: 8080
               name: http
