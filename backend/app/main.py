@@ -1,6 +1,7 @@
-from fastapi import FastAPI
+from fastapi import Depends, FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy import inspect, text
+from .auth import verify_service_token
 from .database import engine, Base
 from .routers import projects, risk_matrices, communication_plans, meeting_plans, runbooks, project_plans, oppgaver, templates
 
@@ -111,14 +112,22 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-app.include_router(projects.router)
-app.include_router(risk_matrices.router)
-app.include_router(communication_plans.router)
-app.include_router(meeting_plans.router)
-app.include_router(runbooks.router)
-app.include_router(project_plans.router)
-app.include_router(oppgaver.router)
-app.include_router(templates.router)
+_routers = (
+    projects.router,
+    risk_matrices.router,
+    communication_plans.router,
+    meeting_plans.router,
+    runbooks.router,
+    project_plans.router,
+    oppgaver.router,
+    templates.router,
+)
+
+for _router in _routers:
+    # Unauthenticated mount, used by the frontend (same-origin /api proxy) — unchanged behavior.
+    app.include_router(_router)
+    # Token-gated mount under /mcp, used by external service clients (e.g. the ProjectTools MCP server).
+    app.include_router(_router, prefix="/mcp", dependencies=[Depends(verify_service_token)])
 
 
 @app.get("/health")

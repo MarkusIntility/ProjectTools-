@@ -29,6 +29,12 @@ spec:
                 secretKeyRef:
                   name: projecttools-secrets
                   key: database-url
+            - name: MCP_API_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: projecttools-secrets
+                  key: mcp-api-token
+                  optional: true
           resources:
             requests:
               cpu: 50m
